@@ -13,6 +13,7 @@ export default function Vistoria() {
   const [qualidade, setQualidade] = useState('')
   const [km, setKm] = useState('')
   const [responsavel, setResponsavel] = useState('')
+  const [validacao, setValidacao] = useState('')
   const [observacoes, setObservacoes] = useState('')
   const [itens, setItens] = useState<string[]>([])
   const [buscando, setBuscando] = useState(false)
@@ -71,7 +72,7 @@ export default function Vistoria() {
         setSucesso(false)
         setPlaca(''); setModelo(''); setAno(''); setCor('')
         setCombustivel(''); setFipe(''); setQualidade(''); setKm('')
-        setResponsavel(''); setObservacoes(''); setItens([])
+        setResponsavel(''); setValidacao(''); setObservacoes(''); setItens([])
         setEncontrado(false)
       }, 3000)
     }
@@ -144,9 +145,14 @@ export default function Vistoria() {
           <div><label style={labelStyle}>Hora *</label><input style={inputStyle} type="time" /></div>
         </div>
 
-        <div style={{ marginBottom: 4 }}>
+        <div style={{ marginBottom: 12 }}>
           <label style={labelStyle}>Responsável pela vistoria *</label>
           <input style={inputStyle} placeholder="Nome de quem está fazendo a vistoria" value={responsavel} onChange={e => setResponsavel(e.target.value)} />
+        </div>
+
+        <div style={{ marginBottom: 4 }}>
+          <label style={labelStyle}>Validação da vistoria</label>
+          <input style={inputStyle} placeholder="Nome de quem está validando a vistoria" value={validacao} onChange={e => setValidacao(e.target.value)} />
         </div>
 
         <p style={sectionStyle}>Observações gerais</p>
