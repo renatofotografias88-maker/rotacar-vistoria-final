@@ -24,10 +24,83 @@ export default function Vistoria() {
   const checklistItens = ['Documento','Chave roda','Estepe','Macaco','Bagagito','Som','Antena','Triângulo','Chave reserva','Manual','Rastreador','Seguro']
   const posicoesFoto = ['Frente','Traseira','Lateral direita','Lateral esquerda','Painel / interior','Hodômetro (KM)','Pneus','Motor','Outros']
 
+  async function buscarFipe(modeloNome: string, anoVeiculo: string) {
+    try {
+      // Busca todas as marcas
+      const marcasRes = await fetch('https://parallelum.com.br/fipe/api/v1/carros/marcas')
+      const marcas = await marcasRes.json()
+
+      // Tenta encontrar a marca pelo nome do modelo
+      const nomeLower = modeloNome.toLowerCase()
+      let marcaEncontrada = null
+
+      const mapasMarca: Record<string, string> = {
+        'argo': 'fiat', 'pulse': 'fiat', 'cronos': 'fiat', 'mobi': 'fiat', 'strada': 'fiat',
+        'saveiro': 'volkswagen', 'polo': 'volkswagen', 'gol': 'volkswagen', 'voyage': 'volkswagen', 'virtus': 'volkswagen', 't-cross': 'volkswagen',
+        'yaris': 'toyota', 'corolla': 'toyota', 'hilux': 'toyota', 'sw4': 'toyota',
+        'hb20': 'hyundai', 'creta': 'hyundai',
+        'civic': 'honda', 'fit': 'honda', 'hr-v': 'honda', 'city': 'honda',
+        'onix': 'chevrolet', 'tracker': 'chevrolet', 'spin': 'chevrolet',
+        'kwid': 'renault', 'sandero': 'renault', 'duster': 'renault',
+        'l200': 'mitsubishi', 'pajero': 'mitsubishi',
+        'ranger': 'ford', 'ka': 'ford', 'territory': 'ford',
+      }
+
+      let nomeMarca = ''
+      for (const [chave, marca] of Object.entries(mapasMarca)) {
+        if (nomeLower.includes(chave)) { nomeMarca = marca; break }
+      }
+
+      if (!nomeMarca) return null
+
+      marcaEncontrada = marcas.find((m: any) => m.nome.toLowerCase().includes(nomeMarca))
+      if (!marcaEncontrada) return null
+
+      // Busca modelos da marca
+      const modelosRes = await fetch(`https://parallelum.com.br/fipe/api/v1/carros/marcas/${marcaEncontrada.codigo}/modelos`)
+      const { modelos } = await modelosRes.json()
+
+      // Encontra o modelo mais próximo
+      const palavrasModelo = nomeLower.split(' ').filter((p: string) => p.length > 2)
+      let modeloEncontrado = null
+      let maiorScore = 0
+
+      for (const m of modelos) {
+        const mLower = m.nome.toLowerCase()
+        let score = 0
+        for (const palavra of palavrasModelo) {
+          if (mLower.includes(palavra)) score++
+        }
+        if (score > maiorScore) { maiorScore = score; modeloEncontrado = m }
+      }
+
+      if (!modeloEncontrado || maiorScore === 0) return null
+
+      // Busca anos do modelo
+      const anosRes = await fetch(`https://parallelum.com.br/fipe/api/v1/carros/marcas/${marcaEncontrada.codigo}/modelos/${modeloEncontrado.codigo}/anos`)
+      const anos = await anosRes.json()
+
+      // Encontra o ano mais próximo
+      const anoNum = parseInt(anoVeiculo)
+      let anoEncontrado = anos.find((a: any) => a.nome.includes(String(anoNum)))
+      if (!anoEncontrado) anoEncontrado = anos[0]
+      if (!anoEncontrado) return null
+
+      // Busca o valor
+      const valorRes = await fetch(`https://parallelum.com.br/fipe/api/v1/carros/marcas/${marcaEncontrada.codigo}/modelos/${modeloEncontrado.codigo}/anos/${anoEncontrado.codigo}`)
+      const valor = await valorRes.json()
+
+      return valor.Valor || null
+    } catch {
+      return null
+    }
+  }
+
   async function buscarPlaca() {
     if (!placa) return
     setBuscando(true)
     setEncontrado(false)
+    setFipe('')
 
     const placaFormatada = placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
 
@@ -47,9 +120,13 @@ export default function Vistoria() {
     setAno(data.ano_veiculo ? `${data.ano_veiculo}/${data.ano_modelo}` : '')
     setCor(data.cor || '')
     setCombustivel(data.combustivel || '')
-    setFipe('Consultando FIPE...')
     setEncontrado(true)
     setBuscando(false)
+
+    // Busca FIPE em paralelo
+    setFipe('🔍 Consultando FIPE...')
+    const valorFipe = await buscarFipe(data.modelo || '', data.ano_veiculo || '')
+    setFipe(valorFipe || 'Não encontrado na FIPE')
   }
 
   function toggleItem(item: string) {
@@ -64,16 +141,8 @@ export default function Vistoria() {
     setEnviando(true)
     const { error } = await supabase.from('vistorias').insert({
       placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
-      modelo,
-      ano_veiculo: ano,
-      cor,
-      combustivel,
-      fipe,
-      qualidade,
-      km_atual: parseInt(km),
-      responsavel,
-      observacoes,
-      itens,
+      modelo, ano_veiculo: ano, cor, combustivel, fipe, qualidade,
+      km_atual: parseInt(km), responsavel, observacoes, itens,
       data_vistoria: new Date().toISOString().split('T')[0],
       hora_vistoria: new Date().toTimeString().split(' ')[0],
     })
@@ -124,7 +193,7 @@ export default function Vistoria() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div style={{ background: '#EFF6FF', border: '1px solid #93C5FD', borderRadius: 10, padding: '10px 14px' }}>
               <p style={{ margin: 0, fontSize: 12, color: '#1D4ED8' }}>Tabela FIPE</p>
-              <p style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#1E3A8A' }}>{fipe}</p>
+              <p style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1E3A8A' }}>{fipe || '🔍 Buscando...'}</p>
               <span style={{ fontSize: 11, background: '#BFDBFE', color: '#1D4ED8', padding: '2px 8px', borderRadius: 4 }}>Automático</span>
             </div>
             <div>
