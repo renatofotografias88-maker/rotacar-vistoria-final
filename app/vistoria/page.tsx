@@ -28,12 +28,26 @@ export default function Vistoria() {
     if (!placa) return
     setBuscando(true)
     setEncontrado(false)
-    await new Promise(r => setTimeout(r, 1200))
-    setModelo('Honda Civic EXL')
-    setAno('2022/2023')
-    setCor('Prata')
-    setCombustivel('Flex')
-    setFipe('R$ 84.750')
+
+    const placaFormatada = placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+
+    const { data, error } = await supabase
+      .from('frota')
+      .select('*')
+      .eq('placa', placaFormatada)
+      .single()
+
+    if (error || !data) {
+      alert('Placa não encontrada na base de veículos!')
+      setBuscando(false)
+      return
+    }
+
+    setModelo(data.modelo || '')
+    setAno(data.ano_veiculo ? `${data.ano_veiculo}/${data.ano_modelo}` : '')
+    setCor(data.cor || '')
+    setCombustivel(data.combustivel || '')
+    setFipe('Consultando FIPE...')
     setEncontrado(true)
     setBuscando(false)
   }
@@ -104,7 +118,7 @@ export default function Vistoria() {
           </div>
         </div>
 
-        {buscando && <div style={{ padding: '10px 14px', background: '#f1f5f9', borderRadius: 8, marginBottom: 12, fontSize: 13, color: '#64748b' }}>⏳ Consultando base de dados e tabela FIPE...</div>}
+        {buscando && <div style={{ padding: '10px 14px', background: '#f1f5f9', borderRadius: 8, marginBottom: 12, fontSize: 13, color: '#64748b' }}>⏳ Consultando base de dados...</div>}
 
         {encontrado && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
