@@ -5,21 +5,21 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import * as XLSX from 'xlsx'
 
+const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+
 export default function Dashboard() {
   const [vistorias, setVistorias] = useState<any[]>([])
   const [filtradas, setFiltradas] = useState<any[]>([])
   const [busca, setBusca] = useState('')
   const [filtroMes, setFiltroMes] = useState('')
-  const [filtroAno, setFiltroAno] = useState('')
+  const [filtroAno, setFiltroAno] = useState(String(new Date().getFullYear()))
   const [carregando, setCarregando] = useState(true)
+  const [verTodosModelos, setVerTodosModelos] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
     const perfil = sessionStorage.getItem('perfil')
-    if (perfil !== 'gestao') {
-      router.push('/')
-      return
-    }
+    if (perfil !== 'gestao') { router.push('/'); return }
     carregarVistorias()
   }, [])
 
@@ -35,32 +35,45 @@ export default function Dashboard() {
 
   useEffect(() => {
     let resultado = [...vistorias]
-    if (busca) {
-      resultado = resultado.filter(v =>
-        v.placa?.toLowerCase().includes(busca.toLowerCase()) ||
-        v.modelo?.toLowerCase().includes(busca.toLowerCase()) ||
-        v.responsavel?.toLowerCase().includes(busca.toLowerCase())
-      )
-    }
+    if (busca) resultado = resultado.filter(v =>
+      v.placa?.toLowerCase().includes(busca.toLowerCase()) ||
+      v.modelo?.toLowerCase().includes(busca.toLowerCase()) ||
+      v.responsavel?.toLowerCase().includes(busca.toLowerCase())
+    )
     if (filtroMes) resultado = resultado.filter(v => v.data_vistoria?.slice(5, 7) === filtroMes)
     if (filtroAno) resultado = resultado.filter(v => v.data_vistoria?.slice(0, 4) === filtroAno)
     setFiltradas(resultado)
   }, [busca, filtroMes, filtroAno, vistorias])
 
+  // Dados gráfico por mês (usa filtroAno)
+  const vistoriasPorMes = MESES.map((_, i) => {
+    const mes = String(i + 1).padStart(2, '0')
+    return vistorias.filter(v =>
+      v.data_vistoria?.slice(5, 7) === mes &&
+      v.data_vistoria?.slice(0, 4) === filtroAno
+    ).length
+  })
+  const maxMes = Math.max(...vistoriasPorMes, 1)
+
+  // Dados gráfico por modelo (usa filtroAno)
+  const contagemModelos: Record<string, number> = {}
+  vistorias
+    .filter(v => v.data_vistoria?.slice(0, 4) === filtroAno)
+    .forEach(v => {
+      const m = v.modelo || 'Desconhecido'
+      contagemModelos[m] = (contagemModelos[m] || 0) + 1
+    })
+  const modelosOrdenados = Object.entries(contagemModelos).sort((a, b) => b[1] - a[1])
+  const top10 = modelosOrdenados.slice(0, 10)
+  const demais = modelosOrdenados.slice(10)
+  const maxModelo = Math.max(...modelosOrdenados.map(m => m[1]), 1)
+
   function exportarExcel() {
     const dados = filtradas.map(v => ({
-      'Placa': v.placa,
-      'Modelo': v.modelo,
-      'Cor': v.cor,
-      'KM': v.km_atual,
-      'Ano': v.ano_veiculo,
-      'Combustível': v.combustivel,
-      'FIPE': v.fipe,
-      'Qualidade': v.qualidade,
-      'Responsável': v.responsavel,
-      'Validação': v.validacao,
-      'Data': v.data_vistoria,
-      'Hora': v.hora_vistoria,
+      'Placa': v.placa, 'Modelo': v.modelo, 'Cor': v.cor,
+      'KM': v.km_atual, 'Ano': v.ano_veiculo, 'Combustível': v.combustivel,
+      'FIPE': v.fipe, 'Qualidade': v.qualidade, 'Responsável': v.responsavel,
+      'Validação': v.validacao, 'Data': v.data_vistoria, 'Hora': v.hora_vistoria,
       'Observações': v.observacoes,
     }))
     const ws = XLSX.utils.json_to_sheet(dados)
@@ -69,10 +82,7 @@ export default function Dashboard() {
     XLSX.writeFile(wb, `vistorias_${filtroAno || 'todos'}_${filtroMes || 'todos'}.xlsx`)
   }
 
-  function sair() {
-    sessionStorage.clear()
-    router.push('/')
-  }
+  function sair() { sessionStorage.clear(); router.push('/') }
 
   const totalHoje = vistorias.filter(v => v.data_vistoria === new Date().toISOString().split('T')[0]).length
   const totalMes = vistorias.filter(v => v.data_vistoria?.slice(0, 7) === new Date().toISOString().slice(0, 7)).length
@@ -80,7 +90,7 @@ export default function Dashboard() {
 
   return (
     <main style={{ background: '#f1f5f9', minHeight: '100vh', padding: '1.5rem 1rem' }}>
-      <div style={{ maxWidth: 800, margin: '0 auto' }}>
+      <div style={{ maxWidth: 860, margin: '0 auto' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
@@ -91,18 +101,12 @@ export default function Dashboard() {
               <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>Vistorias de entrada</p>
             </div>
           </div>
-          <button onClick={sair} style={{ padding: '6px 14px', background: '#FEE2E2', color: '#B91C1C', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
-            Sair
-          </button>
+          <button onClick={sair} style={{ padding: '6px 14px', background: '#FEE2E2', color: '#B91C1C', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Sair</button>
         </div>
 
-        {/* Cards de métricas */}
+        {/* Cards métricas */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: '1.5rem' }}>
-          {[
-            { label: 'Hoje', valor: totalHoje },
-            { label: 'Este mês', valor: totalMes },
-            { label: 'Este ano', valor: totalAno },
-          ].map(card => (
+          {[{ label: 'Hoje', valor: totalHoje }, { label: 'Este mês', valor: totalMes }, { label: 'Este ano', valor: totalAno }].map(card => (
             <div key={card.label} style={{ background: 'white', borderRadius: 12, padding: '1rem', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
               <p style={{ margin: '0 0 4px', fontSize: 12, color: '#64748b' }}>{card.label}</p>
               <p style={{ margin: 0, fontSize: 28, fontWeight: 600, color: '#0f172a' }}>{card.valor}</p>
@@ -111,15 +115,58 @@ export default function Dashboard() {
           ))}
         </div>
 
+        {/* Seletor de ano pros gráficos */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1rem' }}>
+          <span style={{ fontSize: 13, color: '#64748b', fontWeight: 500 }}>Ano dos gráficos:</span>
+          <select style={{ fontSize: 14, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px', color: '#0f172a', outline: 'none' }} value={filtroAno} onChange={e => setFiltroAno(e.target.value)}>
+            <option>2024</option><option>2025</option><option>2026</option>
+          </select>
+        </div>
+
+        {/* Gráfico 1 — Vistorias por mês */}
+        <div style={{ background: 'white', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', marginBottom: '1rem' }}>
+          <p style={{ margin: '0 0 1rem', fontSize: 14, fontWeight: 600, color: '#0f172a' }}>📅 Vistorias por mês — {filtroAno}</p>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 120 }}>
+            {vistoriasPorMes.map((qtd, i) => (
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' }}>
+                <span style={{ fontSize: 10, color: '#64748b', fontWeight: qtd > 0 ? 600 : 400 }}>{qtd > 0 ? qtd : ''}</span>
+                <div style={{ width: '100%', background: qtd > 0 ? '#1D9E75' : '#e2e8f0', borderRadius: '4px 4px 0 0', height: `${Math.max((qtd / maxMes) * 90, qtd > 0 ? 8 : 4)}px`, transition: 'height 0.3s' }} />
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>{MESES[i]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Gráfico 2 — Top 10 modelos */}
+        <div style={{ background: 'white', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#0f172a' }}>🚗 Top modelos vistorados — {filtroAno}</p>
+            {demais.length > 0 && (
+              <button onClick={() => setVerTodosModelos(!verTodosModelos)} style={{ fontSize: 12, color: '#1D9E75', background: '#E1F5EE', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontWeight: 500 }}>
+                {verTodosModelos ? 'Ver menos' : `Ver todos (${modelosOrdenados.length})`}
+              </button>
+            )}
+          </div>
+          {(verTodosModelos ? modelosOrdenados : top10).length === 0 ? (
+            <p style={{ fontSize: 13, color: '#94a3b8', margin: 0 }}>Nenhuma vistoria neste ano ainda.</p>
+          ) : (
+            (verTodosModelos ? modelosOrdenados : top10).map(([modelo, qtd], i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <span style={{ fontSize: 12, color: '#64748b', width: 16, textAlign: 'right', flexShrink: 0 }}>{i + 1}</span>
+                <span style={{ fontSize: 13, color: '#0f172a', width: 180, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{modelo}</span>
+                <div style={{ flex: 1, background: '#f1f5f9', borderRadius: 4, height: 10, overflow: 'hidden' }}>
+                  <div style={{ width: `${(qtd / maxModelo) * 100}%`, height: '100%', background: '#1D9E75', borderRadius: 4, transition: 'width 0.4s' }} />
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', width: 24, textAlign: 'right', flexShrink: 0 }}>{qtd}</span>
+              </div>
+            ))
+          )}
+        </div>
+
         {/* Filtros + Exportar */}
         <div style={{ background: 'white', borderRadius: 12, padding: '1rem', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', marginBottom: '1rem' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <input
-              style={{ flex: 2, minWidth: 140, fontSize: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', color: '#0f172a', outline: 'none' }}
-              placeholder="Buscar por placa, modelo ou responsável..."
-              value={busca}
-              onChange={e => setBusca(e.target.value)}
-            />
+            <input style={{ flex: 2, minWidth: 140, fontSize: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', color: '#0f172a', outline: 'none' }} placeholder="Buscar por placa, modelo ou responsável..." value={busca} onChange={e => setBusca(e.target.value)} />
             <select style={{ flex: 1, minWidth: 100, fontSize: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', color: '#0f172a', outline: 'none' }} value={filtroAno} onChange={e => setFiltroAno(e.target.value)}>
               <option value="">Todos os anos</option>
               <option>2024</option><option>2025</option><option>2026</option>
@@ -133,14 +180,12 @@ export default function Dashboard() {
               <option value="09">Setembro</option><option value="10">Outubro</option>
               <option value="11">Novembro</option><option value="12">Dezembro</option>
             </select>
-            <button onClick={exportarExcel} style={{ padding: '8px 16px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              📥 Exportar Excel
-            </button>
+            <button onClick={exportarExcel} style={{ padding: '8px 16px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>📥 Exportar Excel</button>
           </div>
           <p style={{ margin: '8px 0 0', fontSize: 12, color: '#64748b' }}>{filtradas.length} vistoria{filtradas.length !== 1 ? 's' : ''} encontrada{filtradas.length !== 1 ? 's' : ''}</p>
         </div>
 
-        {/* Tabela */}
+        {/* Tabela histórico */}
         <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 6px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr 80px 90px 80px', gap: 8, padding: '10px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
             {['Placa', 'Modelo', 'KM', 'Data', 'Qualidade'].map(h => (
