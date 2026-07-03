@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await resend.emails.send({
       from: 'Rotacar Vistoria <onboarding@resend.dev>',
-      to: ['renato@rotacar.com.br'],
+      to: ['renato.fotografias88@gmail.com'],
       subject: `🚗 Nova vistoria — ${dadosVistoria.placa} | ${dadosVistoria.modelo}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
