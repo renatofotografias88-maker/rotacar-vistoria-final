@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { gerarPDFVistoria } from '../lib/gerarPDF'
 
@@ -8,6 +8,14 @@ interface FotoSlot {
   posicao: string
   multiplas: boolean
   fotos: { url: string; path: string }[]
+}
+
+function normalizarNome(nome: string): string {
+  return nome
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s/g, '-')
+    .toLowerCase()
 }
 
 export default function Vistoria() {
@@ -36,7 +44,7 @@ export default function Vistoria() {
     { posicao: 'Lateral direita', multiplas: false, fotos: [] },
     { posicao: 'Lateral esquerda', multiplas: false, fotos: [] },
     { posicao: 'Painel / interior', multiplas: false, fotos: [] },
-    { posicao: 'Hodômetro (KM)', multiplas: false, fotos: [] },
+    { posicao: 'Hodometro (KM)', multiplas: false, fotos: [] },
     { posicao: 'Pneus', multiplas: true, fotos: [] },
     { posicao: 'Motor', multiplas: true, fotos: [] },
     { posicao: 'Outros', multiplas: true, fotos: [] },
@@ -120,9 +128,10 @@ export default function Vistoria() {
     const placaFormatada = placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'sem-placa'
     const timestamp = Date.now()
     const ext = file.name.split('.').pop()
-    const path = `${placaFormatada}/${posicao.replace(/\s/g, '-')}/${timestamp}.${ext}`
+    const pastaSegura = normalizarNome(posicao)
+    const path = `${placaFormatada}/${pastaSegura}/${timestamp}.${ext}`
 
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('fotos-vistorias')
       .upload(path, file, { upsert: true })
 
@@ -196,6 +205,7 @@ export default function Vistoria() {
       placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
       modelo, cor, ano, combustivel, km, fipe, qualidade,
       responsavel, validacao, observacoes, itens,
+      fotos: todasFotos,
       data: dataHoje, hora: horaAgora,
     })
 
