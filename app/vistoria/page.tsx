@@ -1,8 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { gerarPDFVistoria } from '../lib/gerarPDF'
+
+interface FotoSlot {
+  posicao: string
+  multiplas: boolean
+  fotos: { url: string; path: string }[]
+}
 
 export default function Vistoria() {
   const [placa, setPlaca] = useState('')
@@ -22,9 +28,21 @@ export default function Vistoria() {
   const [enviando, setEnviando] = useState(false)
   const [sucesso, setSucesso] = useState(false)
   const [statusEnvio, setStatusEnvio] = useState('')
+  const [uploadandoFoto, setUploadandoFoto] = useState<string | null>(null)
+
+  const [fotoSlots, setFotoSlots] = useState<FotoSlot[]>([
+    { posicao: 'Frente', multiplas: false, fotos: [] },
+    { posicao: 'Traseira', multiplas: false, fotos: [] },
+    { posicao: 'Lateral direita', multiplas: false, fotos: [] },
+    { posicao: 'Lateral esquerda', multiplas: false, fotos: [] },
+    { posicao: 'Painel / interior', multiplas: false, fotos: [] },
+    { posicao: 'Hodômetro (KM)', multiplas: false, fotos: [] },
+    { posicao: 'Pneus', multiplas: true, fotos: [] },
+    { posicao: 'Motor', multiplas: true, fotos: [] },
+    { posicao: 'Outros', multiplas: true, fotos: [] },
+  ])
 
   const checklistItens = ['Documento','Chave roda','Estepe','Macaco','Bagagito','Som','Antena','Triângulo','Chave reserva','Manual','Rastreador','Seguro']
-  const posicoesFoto = ['Frente','Traseira','Lateral direita','Lateral esquerda','Painel / interior','Hodômetro (KM)','Pneus','Motor','Outros']
 
   async function buscarFipe(modeloNome: string, anoVeiculo: string) {
     try {
@@ -33,14 +51,13 @@ export default function Vistoria() {
       const nomeLower = modeloNome.toLowerCase()
       const mapasMarca: Record<string, string> = {
         'argo': 'fiat', 'pulse': 'fiat', 'cronos': 'fiat', 'mobi': 'fiat', 'strada': 'fiat',
-        'saveiro': 'volkswagen', 'polo': 'volkswagen', 'gol': 'volkswagen', 'virtus': 'volkswagen', 't-cross': 'volkswagen',
-        'yaris': 'toyota', 'corolla': 'toyota', 'hilux': 'toyota', 'sw4': 'toyota',
+        'saveiro': 'volkswagen', 'polo': 'volkswagen', 'gol': 'volkswagen', 'virtus': 'volkswagen',
+        'yaris': 'toyota', 'corolla': 'toyota', 'hilux': 'toyota',
         'hb20': 'hyundai', 'creta': 'hyundai',
         'civic': 'honda', 'fit': 'honda', 'hr-v': 'honda', 'city': 'honda',
-        'onix': 'chevrolet', 'tracker': 'chevrolet', 'spin': 'chevrolet',
+        'onix': 'chevrolet', 'tracker': 'chevrolet',
         'kwid': 'renault', 'sandero': 'renault', 'duster': 'renault',
-        'l200': 'mitsubishi', 'pajero': 'mitsubishi',
-        'ranger': 'ford', 'ka': 'ford', 'territory': 'ford',
+        'l200': 'mitsubishi', 'ranger': 'ford',
       }
       let nomeMarca = ''
       for (const [chave, marca] of Object.entries(mapasMarca)) {
@@ -96,6 +113,52 @@ export default function Vistoria() {
     setFipe(valorFipe || 'Não encontrado na FIPE')
   }
 
+  async function handleFoto(posicao: string, file: File) {
+    if (!file) return
+    setUploadandoFoto(posicao)
+
+    const placaFormatada = placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'sem-placa'
+    const timestamp = Date.now()
+    const ext = file.name.split('.').pop()
+    const path = `${placaFormatada}/${posicao.replace(/\s/g, '-')}/${timestamp}.${ext}`
+
+    const { data, error } = await supabase.storage
+      .from('fotos-vistorias')
+      .upload(path, file, { upsert: true })
+
+    if (error) {
+      alert('Erro ao fazer upload da foto: ' + error.message)
+      setUploadandoFoto(null)
+      return
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('fotos-vistorias')
+      .getPublicUrl(path)
+
+    setFotoSlots(prev => prev.map(slot => {
+      if (slot.posicao === posicao) {
+        const novasFotos = slot.multiplas
+          ? [...slot.fotos, { url: urlData.publicUrl, path }]
+          : [{ url: urlData.publicUrl, path }]
+        return { ...slot, fotos: novasFotos }
+      }
+      return slot
+    }))
+
+    setUploadandoFoto(null)
+  }
+
+  function removerFoto(posicao: string, path: string) {
+    setFotoSlots(prev => prev.map(slot => {
+      if (slot.posicao === posicao) {
+        return { ...slot, fotos: slot.fotos.filter(f => f.path !== path) }
+      }
+      return slot
+    }))
+    supabase.storage.from('fotos-vistorias').remove([path])
+  }
+
   function toggleItem(item: string) {
     setItens(prev => prev.includes(item) ? prev.filter(i => i !== item) : [...prev, item])
   }
@@ -110,12 +173,13 @@ export default function Vistoria() {
 
     const dataHoje = new Date().toISOString().split('T')[0]
     const horaAgora = new Date().toTimeString().split(' ')[0]
+    const todasFotos = fotoSlots.flatMap(s => s.fotos.map(f => ({ posicao: s.posicao, url: f.url })))
 
-    // 1. Salva no banco
     const { error } = await supabase.from('vistorias').insert({
       placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
       modelo, ano_veiculo: ano, cor, combustivel, fipe, qualidade,
       km_atual: parseInt(km), responsavel, observacoes, itens,
+      fotos: todasFotos,
       data_vistoria: dataHoje,
       hora_vistoria: horaAgora,
     })
@@ -127,7 +191,6 @@ export default function Vistoria() {
       return
     }
 
-    // 2. Gera o PDF
     setStatusEnvio('📄 Gerando laudo em PDF...')
     const pdfBlob = await gerarPDFVistoria({
       placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
@@ -136,14 +199,12 @@ export default function Vistoria() {
       data: dataHoje, hora: horaAgora,
     })
 
-    // 3. Converte PDF para base64
     const pdfBase64 = await new Promise<string>((resolve) => {
       const reader = new FileReader()
       reader.onload = () => resolve((reader.result as string).split(',')[1])
       reader.readAsDataURL(pdfBlob)
     })
 
-    // 4. Envia email com PDF anexado
     setStatusEnvio('📧 Enviando email...')
     await fetch('/api/enviar-email', {
       method: 'POST',
@@ -169,6 +230,7 @@ export default function Vistoria() {
       setCombustivel(''); setFipe(''); setQualidade(''); setKm('')
       setResponsavel(''); setValidacao(''); setObservacoes(''); setItens([])
       setEncontrado(false)
+      setFotoSlots(prev => prev.map(s => ({ ...s, fotos: [] })))
     }, 4000)
   }
 
@@ -263,13 +325,45 @@ export default function Vistoria() {
         </div>
 
         <p style={sectionStyle}>Fotos do veículo</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-          {posicoesFoto.map(pos => (
-            <label key={pos} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 12, padding: '14px 8px', cursor: 'pointer', minHeight: 90, fontSize: 12, color: '#64748b', textAlign: 'center', gridColumn: pos === 'Outros' ? 'span 3' : 'span 1' }}>
-              <span style={{ fontSize: 22 }}>📷</span>
-              {pos}
-              <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} />
-            </label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {fotoSlots.map(slot => (
+            <div key={slot.posicao} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+                  📷 {slot.posicao}
+                  {slot.multiplas && <span style={{ fontSize: 11, color: '#64748b', fontWeight: 400, marginLeft: 6 }}>— múltiplas fotos</span>}
+                </span>
+                {uploadandoFoto === slot.posicao && (
+                  <span style={{ fontSize: 12, color: '#1D9E75' }}>⏳ Enviando...</span>
+                )}
+              </div>
+
+              {slot.fotos.length > 0 && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                  {slot.fotos.map((foto, i) => (
+                    <div key={i} style={{ position: 'relative' }}>
+                      <img src={foto.url} alt={slot.posicao} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '2px solid #1D9E75' }} />
+                      <button onClick={() => removerFoto(slot.posicao, foto.path)} style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, background: '#DC2626', color: 'white', border: 'none', borderRadius: '50%', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>✕</button>
+                      <div style={{ fontSize: 10, color: '#1D9E75', textAlign: 'center', marginTop: 2 }}>✅ OK</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(slot.multiplas || slot.fotos.length === 0) && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'white', border: '1px dashed #cbd5e1', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: '#64748b', width: 'fit-content' }}>
+                  <span>{slot.fotos.length > 0 ? '➕ Adicionar foto' : '📸 Tirar foto'}</span>
+                  <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFoto(slot.posicao, f); e.target.value = '' }} />
+                </label>
+              )}
+
+              {!slot.multiplas && slot.fotos.length > 0 && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'white', border: '1px dashed #cbd5e1', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: '#64748b', width: 'fit-content', marginTop: 4 }}>
+                  <span>🔄 Substituir foto</span>
+                  <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFoto(slot.posicao, f); e.target.value = '' }} />
+                </label>
+              )}
+            </div>
           ))}
         </div>
 
