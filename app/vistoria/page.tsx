@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { gerarPDFVistoria } from '../lib/gerarPDF'
 
 export default function Vistoria() {
   const [placa, setPlaca] = useState('')
@@ -20,23 +21,19 @@ export default function Vistoria() {
   const [encontrado, setEncontrado] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [sucesso, setSucesso] = useState(false)
+  const [statusEnvio, setStatusEnvio] = useState('')
 
   const checklistItens = ['Documento','Chave roda','Estepe','Macaco','Bagagito','Som','Antena','Triângulo','Chave reserva','Manual','Rastreador','Seguro']
   const posicoesFoto = ['Frente','Traseira','Lateral direita','Lateral esquerda','Painel / interior','Hodômetro (KM)','Pneus','Motor','Outros']
 
   async function buscarFipe(modeloNome: string, anoVeiculo: string) {
     try {
-      // Busca todas as marcas
       const marcasRes = await fetch('https://parallelum.com.br/fipe/api/v1/carros/marcas')
       const marcas = await marcasRes.json()
-
-      // Tenta encontrar a marca pelo nome do modelo
       const nomeLower = modeloNome.toLowerCase()
-      let marcaEncontrada = null
-
       const mapasMarca: Record<string, string> = {
         'argo': 'fiat', 'pulse': 'fiat', 'cronos': 'fiat', 'mobi': 'fiat', 'strada': 'fiat',
-        'saveiro': 'volkswagen', 'polo': 'volkswagen', 'gol': 'volkswagen', 'voyage': 'volkswagen', 'virtus': 'volkswagen', 't-cross': 'volkswagen',
+        'saveiro': 'volkswagen', 'polo': 'volkswagen', 'gol': 'volkswagen', 'virtus': 'volkswagen', 't-cross': 'volkswagen',
         'yaris': 'toyota', 'corolla': 'toyota', 'hilux': 'toyota', 'sw4': 'toyota',
         'hb20': 'hyundai', 'creta': 'hyundai',
         'civic': 'honda', 'fit': 'honda', 'hr-v': 'honda', 'city': 'honda',
@@ -45,55 +42,35 @@ export default function Vistoria() {
         'l200': 'mitsubishi', 'pajero': 'mitsubishi',
         'ranger': 'ford', 'ka': 'ford', 'territory': 'ford',
       }
-
       let nomeMarca = ''
       for (const [chave, marca] of Object.entries(mapasMarca)) {
         if (nomeLower.includes(chave)) { nomeMarca = marca; break }
       }
-
       if (!nomeMarca) return null
-
-      marcaEncontrada = marcas.find((m: any) => m.nome.toLowerCase().includes(nomeMarca))
+      const marcaEncontrada = marcas.find((m: any) => m.nome.toLowerCase().includes(nomeMarca))
       if (!marcaEncontrada) return null
-
-      // Busca modelos da marca
       const modelosRes = await fetch(`https://parallelum.com.br/fipe/api/v1/carros/marcas/${marcaEncontrada.codigo}/modelos`)
       const { modelos } = await modelosRes.json()
-
-      // Encontra o modelo mais próximo
       const palavrasModelo = nomeLower.split(' ').filter((p: string) => p.length > 2)
       let modeloEncontrado = null
       let maiorScore = 0
-
       for (const m of modelos) {
         const mLower = m.nome.toLowerCase()
         let score = 0
-        for (const palavra of palavrasModelo) {
-          if (mLower.includes(palavra)) score++
-        }
+        for (const palavra of palavrasModelo) { if (mLower.includes(palavra)) score++ }
         if (score > maiorScore) { maiorScore = score; modeloEncontrado = m }
       }
-
       if (!modeloEncontrado || maiorScore === 0) return null
-
-      // Busca anos do modelo
       const anosRes = await fetch(`https://parallelum.com.br/fipe/api/v1/carros/marcas/${marcaEncontrada.codigo}/modelos/${modeloEncontrado.codigo}/anos`)
       const anos = await anosRes.json()
-
-      // Encontra o ano mais próximo
       const anoNum = parseInt(anoVeiculo)
       let anoEncontrado = anos.find((a: any) => a.nome.includes(String(anoNum)))
       if (!anoEncontrado) anoEncontrado = anos[0]
       if (!anoEncontrado) return null
-
-      // Busca o valor
       const valorRes = await fetch(`https://parallelum.com.br/fipe/api/v1/carros/marcas/${marcaEncontrada.codigo}/modelos/${modeloEncontrado.codigo}/anos/${anoEncontrado.codigo}`)
       const valor = await valorRes.json()
-
       return valor.Valor || null
-    } catch {
-      return null
-    }
+    } catch { return null }
   }
 
   async function buscarPlaca() {
@@ -101,29 +78,19 @@ export default function Vistoria() {
     setBuscando(true)
     setEncontrado(false)
     setFipe('')
-
     const placaFormatada = placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
-
-    const { data, error } = await supabase
-      .from('frota')
-      .select('*')
-      .eq('placa', placaFormatada)
-      .single()
-
+    const { data, error } = await supabase.from('frota').select('*').eq('placa', placaFormatada).single()
     if (error || !data) {
       alert('Placa não encontrada na base de veículos!')
       setBuscando(false)
       return
     }
-
     setModelo(data.modelo || '')
     setAno(data.ano_veiculo ? `${data.ano_veiculo}/${data.ano_modelo}` : '')
     setCor(data.cor || '')
     setCombustivel(data.combustivel || '')
     setEncontrado(true)
     setBuscando(false)
-
-    // Busca FIPE em paralelo
     setFipe('🔍 Consultando FIPE...')
     const valorFipe = await buscarFipe(data.modelo || '', data.ano_veiculo || '')
     setFipe(valorFipe || 'Não encontrado na FIPE')
@@ -139,26 +106,70 @@ export default function Vistoria() {
       return
     }
     setEnviando(true)
+    setStatusEnvio('💾 Salvando vistoria...')
+
+    const dataHoje = new Date().toISOString().split('T')[0]
+    const horaAgora = new Date().toTimeString().split(' ')[0]
+
+    // 1. Salva no banco
     const { error } = await supabase.from('vistorias').insert({
       placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
       modelo, ano_veiculo: ano, cor, combustivel, fipe, qualidade,
       km_atual: parseInt(km), responsavel, observacoes, itens,
-      data_vistoria: new Date().toISOString().split('T')[0],
-      hora_vistoria: new Date().toTimeString().split(' ')[0],
+      data_vistoria: dataHoje,
+      hora_vistoria: horaAgora,
     })
-    setEnviando(false)
+
     if (error) {
       alert('Erro ao salvar: ' + error.message)
-    } else {
-      setSucesso(true)
-      setTimeout(() => {
-        setSucesso(false)
-        setPlaca(''); setModelo(''); setAno(''); setCor('')
-        setCombustivel(''); setFipe(''); setQualidade(''); setKm('')
-        setResponsavel(''); setValidacao(''); setObservacoes(''); setItens([])
-        setEncontrado(false)
-      }, 3000)
+      setEnviando(false)
+      setStatusEnvio('')
+      return
     }
+
+    // 2. Gera o PDF
+    setStatusEnvio('📄 Gerando laudo em PDF...')
+    const pdfBlob = await gerarPDFVistoria({
+      placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
+      modelo, cor, ano, combustivel, km, fipe, qualidade,
+      responsavel, validacao, observacoes, itens,
+      data: dataHoje, hora: horaAgora,
+    })
+
+    // 3. Converte PDF para base64
+    const pdfBase64 = await new Promise<string>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve((reader.result as string).split(',')[1])
+      reader.readAsDataURL(pdfBlob)
+    })
+
+    // 4. Envia email com PDF anexado
+    setStatusEnvio('📧 Enviando email...')
+    await fetch('/api/enviar-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pdfBase64,
+        dadosVistoria: {
+          placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
+          modelo, cor, ano, combustivel, km, fipe, qualidade,
+          responsavel, validacao, observacoes, itens,
+          data: dataHoje, hora: horaAgora,
+        }
+      })
+    })
+
+    setEnviando(false)
+    setStatusEnvio('')
+    setSucesso(true)
+
+    setTimeout(() => {
+      setSucesso(false)
+      setPlaca(''); setModelo(''); setAno(''); setCor('')
+      setCombustivel(''); setFipe(''); setQualidade(''); setKm('')
+      setResponsavel(''); setValidacao(''); setObservacoes(''); setItens([])
+      setEncontrado(false)
+    }, 4000)
   }
 
   return (
@@ -167,7 +178,7 @@ export default function Vistoria() {
 
         {sucesso && (
           <div style={{ background: '#DCFCE7', border: '1px solid #16A34A', borderRadius: 10, padding: '1rem', marginBottom: '1rem', textAlign: 'center', color: '#15803D', fontWeight: 600 }}>
-            ✅ Vistoria salva com sucesso!
+            ✅ Vistoria salva e email enviado com sucesso!
           </div>
         )}
 
@@ -262,8 +273,14 @@ export default function Vistoria() {
           ))}
         </div>
 
-        <button onClick={enviarVistoria} disabled={enviando} style={{ marginTop: '1.5rem', width: '100%', padding: 14, background: enviando ? '#94a3b8' : '#1D9E75', color: 'white', border: 'none', borderRadius: 12, fontSize: 16, fontWeight: 600, cursor: enviando ? 'not-allowed' : 'pointer' }}>
-          {enviando ? 'Salvando...' : 'Enviar vistoria ↗'}
+        {enviando && (
+          <div style={{ marginTop: '1rem', padding: '12px 16px', background: '#EFF6FF', border: '1px solid #93C5FD', borderRadius: 10, fontSize: 14, color: '#1D4ED8', textAlign: 'center' }}>
+            {statusEnvio}
+          </div>
+        )}
+
+        <button onClick={enviarVistoria} disabled={enviando} style={{ marginTop: '1rem', width: '100%', padding: 14, background: enviando ? '#94a3b8' : '#1D9E75', color: 'white', border: 'none', borderRadius: 12, fontSize: 16, fontWeight: 600, cursor: enviando ? 'not-allowed' : 'pointer' }}>
+          {enviando ? 'Processando...' : 'Enviar vistoria ↗'}
         </button>
 
       </div>
