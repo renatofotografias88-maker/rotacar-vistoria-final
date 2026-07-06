@@ -220,7 +220,7 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
     let paginaFotoAtual = -1 // força criar a primeira página de fotos no loop abaixo
     let yFoto = topoUtil
 
-    function desenharCabecalhoPaginaFotos() {
+    const desenharCabecalhoPaginaFotos = () => {
       doc.setFillColor(...verde)
       doc.rect(0, 0, largura, 25, 'F')
       doc.setTextColor(255, 255, 255)
@@ -232,7 +232,7 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
       doc.text(`Placa: ${dados.placa}`, margem, 19)
     }
 
-    function desenharRodapePaginaFotos() {
+    const desenharRodapePaginaFotos = () => {
       doc.setFillColor(...verde)
       doc.rect(0, 287, largura, 10, 'F')
       doc.setTextColor(255, 255, 255)
@@ -266,6 +266,8 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
       const imagem = await carregarImagem(foto.url)
 
       if (imagem) {
+        // Calcula o encaixe da imagem dentro do espaço reservado, mantendo a proporção original
+        // (evita fotos esticadas ou achatadas).
         const proporcaoImagem = imagem.largura / imagem.altura
         const proporcaoEspaco = larguraFoto / alturaFoto
         let wDesenho = larguraFoto - 4
@@ -281,16 +283,19 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
         try {
           doc.addImage(imagem.dataUrl, xImg, yImg, wDesenho, hDesenho)
         } catch {
+          // Formato de imagem não suportado pelo jsPDF (raro) — mantém o cartão vazio em vez de travar o PDF
           doc.setTextColor(...cinzaMedio)
           doc.setFontSize(8)
           doc.text('(imagem indisponível)', x + larguraFoto / 2, yFoto + alturaFoto / 2, { align: 'center' })
         }
       } else {
+        // Não conseguiu baixar a foto (link expirado, sem internet no momento da geração, etc)
         doc.setTextColor(...cinzaMedio)
         doc.setFontSize(8)
         doc.text('(imagem indisponível)', x + larguraFoto / 2, yFoto + alturaFoto / 2, { align: 'center' })
       }
 
+      // Legenda com o nome da posição, embaixo da foto
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(9)
       doc.setTextColor(...cinzaEscuro)
@@ -305,4 +310,4 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
   }
 
   return doc.output('blob')
-} 
+}
