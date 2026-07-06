@@ -45,22 +45,8 @@ function desenharFaixaGradiente(doc: jsPDF, x: number, y: number, largura: numbe
 }
 
 const TEMPO_LIMITE_POR_FOTO_MS = 10000
+const MAIOR_LADO_MAXIMO_PX = 1600
 
-// Carrega uma imagem a partir de uma URL e devolve os dados prontos para o jsPDF,
-// junto com a largura e altura reais da imagem (para não distorcer no PDF).
-//
-// DETALHE IMPORTANTE: o jsPDF tem seu próprio decodificador de JPEG "caseiro",
-// escrito em JavaScript puro, que é conhecido por falhar em vários JPEGs do
-// mundo real (fotos de bancos de imagem, certos apps de celular, certas
-// compressões) mesmo quando o arquivo é perfeitamente válido e abre normal em
-// qualquer lugar. Foi exatamente esse decodificador que gerou o erro
-// "Error while decompressing the data: -3" que você viu no console.
-//
-// A solução definitiva: em vez de entregar o JPEG original pro jsPDF, a gente
-// deixa o PRÓPRIO NAVEGADOR decodificar a imagem (ele nunca falha, usa o
-// mesmo motor que abre fotos em qualquer site) e depois redesenha ela como
-// PNG num "canvas" invisível. PNG é um formato mais simples de decodificar,
-// e o jsPDF lida com ele de forma muito mais confiável.
 async function carregarImagem(url: string): Promise<{ dataUrl: string; largura: number; altura: number } | null> {
   try {
     const controlador = new AbortController()
@@ -84,18 +70,24 @@ async function carregarImagem(url: string): Promise<{ dataUrl: string; largura: 
       img.src = dataUrlOriginal
     })
 
-    const largura = imgElement.width
-    const altura = imgElement.height
+    const larguraOriginal = imgElement.naturalWidth || imgElement.width
+    const alturaOriginal = imgElement.naturalHeight || imgElement.height
+
+    const maiorLado = Math.max(larguraOriginal, alturaOriginal)
+    const fatorReducao = maiorLado > MAIOR_LADO_MAXIMO_PX ? MAIOR_LADO_MAXIMO_PX / maiorLado : 1
+    const larguraFinal = Math.round(larguraOriginal * fatorReducao)
+    const alturaFinal = Math.round(alturaOriginal * fatorReducao)
 
     const canvas = document.createElement('canvas')
-    canvas.width = largura
-    canvas.height = altura
+    canvas.width = larguraFinal
+    canvas.height = alturaFinal
     const contexto = canvas.getContext('2d')
     if (!contexto) throw new Error('Não foi possível criar contexto de canvas')
-    contexto.drawImage(imgElement, 0, 0)
-    const dataUrlConvertido = canvas.toDataURL('image/png')
+    contexto.drawImage(imgElement, 0, 0, larguraFinal, alturaFinal)
 
-    return { dataUrl: dataUrlConvertido, largura, altura }
+    const dataUrlConvertido = canvas.toDataURL('image/jpeg', 0.85)
+
+    return { dataUrl: dataUrlConvertido, largura: larguraFinal, altura: alturaFinal }
   } catch {
     return null
   }
@@ -340,7 +332,7 @@ export async function gerarPDFVistoria(
         const aliasUnico = `foto_${i}`
 
         try {
-          doc.addImage(imagem.dataUrl, 'PNG', xImg, yImg, wDesenho, hDesenho, aliasUnico, 'FAST')
+          doc.addImage(imagem.dataUrl, 'JPEG', xImg, yImg, wDesenho, hDesenho, aliasUnico, 'FAST')
         } catch (erro) {
           console.error(`Falha ao inserir a foto "${foto.posicao}" (posição ${i}) no PDF:`, erro)
           doc.setTextColor(...cinzaMedio)
