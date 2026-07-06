@@ -87,17 +87,21 @@ async function carregarImagem(url: string): Promise<{ dataUrl: string; largura: 
 // Baixa TODAS as fotos ao mesmo tempo (em paralelo), em vez de uma de cada vez.
 // Isso é o que resolve o travamento com muitas fotos: o tempo total de espera
 // passa a ser "o tempo da foto mais lenta", não "a soma do tempo de todas".
+//
+// Importante: a chave do resultado é o ÍNDICE da foto na lista (0, 1, 2...), não a URL.
+// Se usássemos a URL como chave, fotos repetidas (mesma imagem em posições diferentes,
+// comum em testes) colidiriam na mesma entrada do mapa — cada uma é sempre única por índice.
 async function carregarTodasAsFotos(
   fotos: FotoVistoria[],
   onProgresso?: (concluidas: number, total: number) => void
-): Promise<Map<string, { dataUrl: string; largura: number; altura: number } | null>> {
-  const resultado = new Map<string, { dataUrl: string; largura: number; altura: number } | null>()
+): Promise<Map<number, { dataUrl: string; largura: number; altura: number } | null>> {
+  const resultado = new Map<number, { dataUrl: string; largura: number; altura: number } | null>()
   let concluidas = 0
 
   await Promise.all(
-    fotos.map(async (foto) => {
+    fotos.map(async (foto, indice) => {
       const imagem = await carregarImagem(foto.url)
-      resultado.set(foto.url, imagem)
+      resultado.set(indice, imagem)
       concluidas++
       onProgresso?.(concluidas, fotos.length)
     })
@@ -268,7 +272,6 @@ export async function gerarPDFVistoria(
     let paginaFotoAtual = -1
     let yFoto = topoUtil
 
-    // Baixa TODAS as fotos ao mesmo tempo, ANTES de começar a desenhar qualquer página.
     const imagensCarregadas = await carregarTodasAsFotos(dados.fotos, onProgressoFotos)
 
     const desenharCabecalhoPaginaFotos = () => {
@@ -309,7 +312,7 @@ export async function gerarPDFVistoria(
       doc.setFillColor(...cinzaClaro)
       doc.rect(x, yFoto, larguraFoto, alturaCartao, 'F')
 
-      const imagem = imagensCarregadas.get(foto.url) ?? null
+      const imagem = imagensCarregadas.get(i) ?? null
 
       if (imagem) {
         const proporcaoImagem = imagem.largura / imagem.altura
@@ -324,9 +327,12 @@ export async function gerarPDFVistoria(
         const xImg = x + (larguraFoto - wDesenho) / 2
         const yImg = yFoto + 2 + (alturaFoto - 4 - hDesenho) / 2
 
+        const aliasUnico = `foto_${i}`
+
         try {
-          doc.addImage(imagem.dataUrl, xImg, yImg, wDesenho, hDesenho)
-        } catch {
+          doc.addImage(imagem.dataUrl, 'JPEG', xImg, yImg, wDesenho, hDesenho, aliasUnico, 'FAST')
+        } catch (erro) {
+          console.error(`Falha ao inserir a foto "${foto.posicao}" (posição ${i}) no PDF:`, erro)
           doc.setTextColor(...cinzaMedio)
           doc.setFontSize(8)
           doc.text('(imagem indisponível)', x + larguraFoto / 2, yFoto + alturaFoto / 2, { align: 'center' })
