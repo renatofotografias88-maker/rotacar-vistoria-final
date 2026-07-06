@@ -305,4 +305,4 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
   }
 
   return doc.output('blob')
-}
+} 
