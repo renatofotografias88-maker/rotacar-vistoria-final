@@ -15,9 +15,9 @@ function normalizarNome(nome: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // remove acentos
     .replace(/[()[\]{}]/g, '') // remove parênteses e colchetes
-    .replace(/[^a-zA-Z0-9\s-]/g, '') // remove qualquer outro caractere especial
+    .replace(/[^a-zA-Z0-9\s-]/g, '') // remove qualquer outro caractere especial (mantém letras, números, espaço e hífen)
     .trim()
-    .replace(/\s+/g, '-') // troca espaços por hífen
+    .replace(/\s+/g, '-') // troca espaços (um ou mais) por hífen
     .toLowerCase()
 }
 
@@ -204,13 +204,20 @@ export default function Vistoria() {
     }
 
     setStatusEnvio('📄 Gerando laudo em PDF...')
-    const pdfBlob = await gerarPDFVistoria({
-      placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
-      modelo, cor, ano, combustivel, km, fipe, qualidade,
-      responsavel, validacao, observacoes, itens,
-      fotos: todasFotos,
-      data: dataHoje, hora: horaAgora,
-    })
+    const pdfBlob = await gerarPDFVistoria(
+      {
+        placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
+        modelo, cor, ano, combustivel, km, fipe, qualidade,
+        responsavel, validacao, observacoes, itens,
+        fotos: todasFotos,
+        data: dataHoje, hora: horaAgora,
+      },
+      // Callback de progresso: chamado a cada foto que termina de carregar,
+      // atualizando o texto na tela para o usuário ver que está avançando de verdade.
+      (concluidas, total) => {
+        setStatusEnvio(`📷 Processando fotos (${concluidas} de ${total})...`)
+      }
+    )
 
     const pdfBase64 = await new Promise<string>((resolve) => {
       const reader = new FileReader()

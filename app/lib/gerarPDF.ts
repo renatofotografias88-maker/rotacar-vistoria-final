@@ -44,16 +44,24 @@ function desenharFaixaGradiente(doc: jsPDF, x: number, y: number, largura: numbe
     const xFaixa = x + i * larguraFaixa
 
     doc.setFillColor(r, g, b)
-    // +0.3mm de sobreposição entre faixas evita "trilhos" brancos finos entre elas na impressão/zoom
     doc.rect(xFaixa, y, larguraFaixa + 0.3, altura, 'F')
   }
 }
+
+// Tempo máximo que esperamos por CADA foto individual. Se uma foto passar
+// desse tempo (link lento, servidor engasgado, conexão ruim), desistimos só
+// dela e o laudo segue sem travar por causa de uma única imagem.
+const TEMPO_LIMITE_POR_FOTO_MS = 10000
 
 // Carrega uma imagem a partir de uma URL e devolve os dados prontos para o jsPDF,
 // junto com a largura e altura reais da imagem (para não distorcer no PDF).
 async function carregarImagem(url: string): Promise<{ dataUrl: string; largura: number; altura: number } | null> {
   try {
-    const resposta = await fetch(url)
+    const controlador = new AbortController()
+    const cronometro = setTimeout(() => controlador.abort(), TEMPO_LIMITE_POR_FOTO_MS)
+
+    const resposta = await fetch(url, { signal: controlador.signal })
+    clearTimeout(cronometro)
     const blob = await resposta.blob()
 
     const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -72,16 +80,38 @@ async function carregarImagem(url: string): Promise<{ dataUrl: string; largura: 
 
     return { dataUrl, largura: dimensoes.largura, altura: dimensoes.altura }
   } catch {
-    // Se uma foto falhar ao carregar (link quebrado, sem internet, etc),
-    // o laudo continua sendo gerado sem travar tudo por causa de uma imagem.
     return null
   }
 }
 
-export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
+// Baixa TODAS as fotos ao mesmo tempo (em paralelo), em vez de uma de cada vez.
+// Isso é o que resolve o travamento com muitas fotos: o tempo total de espera
+// passa a ser "o tempo da foto mais lenta", não "a soma do tempo de todas".
+async function carregarTodasAsFotos(
+  fotos: FotoVistoria[],
+  onProgresso?: (concluidas: number, total: number) => void
+): Promise<Map<string, { dataUrl: string; largura: number; altura: number } | null>> {
+  const resultado = new Map<string, { dataUrl: string; largura: number; altura: number } | null>()
+  let concluidas = 0
+
+  await Promise.all(
+    fotos.map(async (foto) => {
+      const imagem = await carregarImagem(foto.url)
+      resultado.set(foto.url, imagem)
+      concluidas++
+      onProgresso?.(concluidas, fotos.length)
+    })
+  )
+
+  return resultado
+}
+
+export async function gerarPDFVistoria(
+  dados: DadosVistoria,
+  onProgressoFotos?: (concluidas: number, total: number) => void
+): Promise<Blob> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
 
-  // Vermelho sóbrio da marca — usado em títulos de seção, ícones de item marcado, etc.
   const vermelho = [0xB7, 0x1C, 0x1C] as [number, number, number]
   const cinzaEscuro = [15, 23, 42] as [number, number, number]
   const cinzaMedio = [100, 116, 139] as [number, number, number]
@@ -90,14 +120,9 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
   const largura = 210
   const margem = 20
 
-  // ===== Header com gradiente e logo =====
   desenharFaixaGradiente(doc, 0, 0, largura, 35)
-
-  // Logo no canto esquerdo do cabeçalho (altura 12.9mm, largura proporcional)
   doc.addImage(LOGO_ROTACAR, 'PNG', margem, 6, 32, 12.9)
 
-  // Textos do cabeçalho ficam à direita da logo. Como o gradiente vai de vermelho (esquerda)
-  // para branco (direita), o texto escuro garante boa leitura sobre o lado claro da faixa.
   const xTextoHeader = margem + 40
   doc.setTextColor(...cinzaEscuro)
   doc.setFontSize(11)
@@ -108,7 +133,6 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
   doc.setFont('helvetica', 'normal')
   doc.text(`Data: ${dados.data}   Hora: ${dados.hora}`, xTextoHeader, 22)
 
-  // Seção dados do veículo
   let y = 45
 
   doc.setFillColor(...cinzaClaro)
@@ -151,7 +175,6 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
 
   y += 16
 
-  // Seção responsável
   doc.setFillColor(...cinzaClaro)
   doc.rect(margem, y, largura - margem * 2, 8, 'F')
   doc.setTextColor(...cinzaEscuro)
@@ -175,7 +198,6 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
 
   y += 16
 
-  // Seção observações
   if (dados.observacoes) {
     doc.setFillColor(...cinzaClaro)
     doc.rect(margem, y, largura - margem * 2, 8, 'F')
@@ -194,7 +216,6 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
     y += linhas.length * 5 + 6
   }
 
-  // Seção itens
   doc.setFillColor(...cinzaClaro)
   doc.rect(margem, y, largura - margem * 2, 8, 'F')
   doc.setTextColor(...cinzaEscuro)
@@ -226,7 +247,6 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
 
   y += Math.ceil(todosItens.length / colunas) * 8 + 8
 
-  // ===== Rodapé da primeira página, com gradiente e logo pequena =====
   desenharFaixaGradiente(doc, 0, 287, largura, 10)
   doc.addImage(LOGO_ROTACAR, 'PNG', margem, 288.5, 14.5, 5.9)
 
@@ -236,19 +256,20 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
   doc.text('Sistema de Vistoria Digital', margem + 18, 293)
   doc.text(`Gerado em ${dados.data} às ${dados.hora}`, largura - margem, 293, { align: 'right' })
 
-  // ===== PÁGINA(S) DE FOTOS =====
-  // Só cria a página de fotos se realmente existirem fotos anexadas na vistoria.
   if (dados.fotos && dados.fotos.length > 0) {
     const colunasFoto = 2
     const espacamento = 6
     const larguraFoto = (largura - margem * 2 - espacamento) / colunasFoto
-    const alturaFoto = larguraFoto * 0.75 // proporção 4:3, boa para fotos de celular
-    const alturaCartao = alturaFoto + 12 // espaço da foto + legenda com o nome da posição
-    const topoUtil = 40 // onde o conteúdo pode começar, abaixo do cabeçalho da página de fotos
-    const rodapeLimite = 280 // onde o conteúdo deve parar, antes do rodapé
+    const alturaFoto = larguraFoto * 0.75
+    const alturaCartao = alturaFoto + 12
+    const topoUtil = 40
+    const rodapeLimite = 280
 
-    let paginaFotoAtual = -1 // força criar a primeira página de fotos no loop abaixo
+    let paginaFotoAtual = -1
     let yFoto = topoUtil
+
+    // Baixa TODAS as fotos ao mesmo tempo, ANTES de começar a desenhar qualquer página.
+    const imagensCarregadas = await carregarTodasAsFotos(dados.fotos, onProgressoFotos)
 
     const desenharCabecalhoPaginaFotos = () => {
       desenharFaixaGradiente(doc, 0, 0, largura, 25)
@@ -274,7 +295,6 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
       const col = i % colunasFoto
       const x = margem + col * (larguraFoto + espacamento)
 
-      // Início de uma nova linha: verifica se cabe, senão pula de página
       if (col === 0) {
         const precisaNovaPagina = paginaFotoAtual === -1 || yFoto + alturaCartao > rodapeLimite
         if (precisaNovaPagina) {
@@ -286,15 +306,12 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
         }
       }
 
-      // Moldura de fundo do cartão da foto
       doc.setFillColor(...cinzaClaro)
       doc.rect(x, yFoto, larguraFoto, alturaCartao, 'F')
 
-      const imagem = await carregarImagem(foto.url)
+      const imagem = imagensCarregadas.get(foto.url) ?? null
 
       if (imagem) {
-        // Calcula o encaixe da imagem dentro do espaço reservado, mantendo a proporção original
-        // (evita fotos esticadas ou achatadas).
         const proporcaoImagem = imagem.largura / imagem.altura
         const proporcaoEspaco = larguraFoto / alturaFoto
         let wDesenho = larguraFoto - 4
@@ -310,19 +327,16 @@ export async function gerarPDFVistoria(dados: DadosVistoria): Promise<Blob> {
         try {
           doc.addImage(imagem.dataUrl, xImg, yImg, wDesenho, hDesenho)
         } catch {
-          // Formato de imagem não suportado pelo jsPDF (raro) — mantém o cartão vazio em vez de travar o PDF
           doc.setTextColor(...cinzaMedio)
           doc.setFontSize(8)
           doc.text('(imagem indisponível)', x + larguraFoto / 2, yFoto + alturaFoto / 2, { align: 'center' })
         }
       } else {
-        // Não conseguiu baixar a foto (link expirado, sem internet no momento da geração, etc)
         doc.setTextColor(...cinzaMedio)
         doc.setFontSize(8)
         doc.text('(imagem indisponível)', x + larguraFoto / 2, yFoto + alturaFoto / 2, { align: 'center' })
       }
 
-      // Legenda com o nome da posição, embaixo da foto
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(9)
       doc.setTextColor(...cinzaEscuro)
