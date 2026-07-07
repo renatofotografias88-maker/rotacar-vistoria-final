@@ -200,6 +200,11 @@ export async function gerarPDFVistoria(
 
   // Vermelho sóbrio da marca — usado em títulos de seção, ícones de item marcado, etc.
   const vermelho = [0xB7, 0x1C, 0x1C] as [number, number, number]
+  // Verde reservado especificamente para os itens MARCADOS do checklist — cria um
+  // contraste tipo "semáforo" (verde = tem, cinza = não tem) que é muito mais rápido
+  // de ler numa vistoria do que duas variações de vermelho lado a lado.
+  const verdeItemMarcado = [22, 163, 74] as [number, number, number] // #16A34A
+  const cinzaItemNaoMarcado = [180, 188, 199] as [number, number, number] // cinza neutro, discreto
   const cinzaEscuro = [15, 23, 42] as [number, number, number]
   const cinzaMedio = [100, 116, 139] as [number, number, number]
   const cinzaClaro = [241, 245, 249] as [number, number, number]
@@ -207,26 +212,25 @@ export async function gerarPDFVistoria(
   const largura = 210
   const margem = 20
 
-  // ===== Header com gradiente e logo =====
+  // ===== Header: faixa de gradiente com texto branco (sem logo aqui) =====
   desenharFaixaGradiente(doc, 0, 0, largura, 35)
 
-  // Logo no canto esquerdo do cabeçalho (altura 12.9mm, largura proporcional)
-  desenharLogoComSeguranca(doc, logoCarregada, margem, 6, 32, 12.9)
-
-  // Textos do cabeçalho ficam à direita da logo. Como o gradiente vai de vermelho (esquerda)
-  // para branco (direita), o texto escuro garante boa leitura sobre o lado claro da faixa.
-  const xTextoHeader = margem + 40
-  doc.setTextColor(...cinzaEscuro)
+  // Texto branco garante contraste forte contra o gradiente vermelho, em
+  // qualquer ponto da faixa (tanto no lado mais vermelho quanto no mais claro).
+  doc.setTextColor(255, 255, 255)
   doc.setFontSize(11)
   doc.setFont('helvetica', 'bold')
-  doc.text('Laudo de Vistoria de Entrada', xTextoHeader, 14)
+  doc.text('Laudo de Vistoria de Entrada', margem, 14)
 
   doc.setFontSize(9)
   doc.setFont('helvetica', 'normal')
-  doc.text(`Data: ${dados.data}   Hora: ${dados.hora}`, xTextoHeader, 22)
+  doc.text(`Data: ${dados.data}   Hora: ${dados.hora}`, margem, 22)
+
+  // ===== Logo, na área branca, acima da seção "Dados do veículo" =====
+  desenharLogoComSeguranca(doc, logoCarregada, margem, 42, 32, 12.9)
 
   // Seção dados do veículo
-  let y = 45
+  let y = 60
 
   doc.setFillColor(...cinzaClaro)
   doc.rect(margem, y, largura - margem * 2, 8, 'F')
@@ -245,7 +249,6 @@ export async function gerarPDFVistoria(
     ['Combustível', dados.combustivel],
     ['KM atual', `${dados.km} km`],
     ['Valor FIPE', dados.fipe],
-    ['Qualidade', dados.qualidade],
   ]
 
   const colEsq = margem
@@ -265,6 +268,34 @@ export async function gerarPDFVistoria(
     doc.setTextColor(...cinzaEscuro)
     doc.text(campo[1] || '-', x, y + 5)
   })
+
+  // "Qualidade" fica na posição direita da última linha (mesmo lugar que ocupava
+  // na lista antes), mas desenhada à parte porque ela usa um "selo" colorido em
+  // vez de texto simples — cor muda conforme o valor: Bom (verde), Regular
+  // (amarelo), Repasse (vermelho). Isso deixa visível de longe, sem precisar ler.
+  {
+    const xQualidade = colDir
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(...cinzaMedio)
+    doc.text('QUALIDADE', xQualidade, y)
+
+    const qualidadeCores: Record<string, { fundo: [number, number, number]; texto: [number, number, number] }> = {
+      'Bom': { fundo: [22, 163, 74], texto: [255, 255, 255] },       // verde / branco
+      'Regular': { fundo: [250, 204, 21], texto: [113, 63, 18] },    // amarelo / marrom
+      'Repasse': { fundo: [220, 38, 38], texto: [255, 255, 255] },   // vermelho / branco
+    }
+    const corSelo = qualidadeCores[dados.qualidade] || { fundo: cinzaClaro, texto: cinzaMedio }
+    const textoSelo = dados.qualidade || '-'
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    const larguraSelo = doc.getTextWidth(textoSelo) + 8
+    doc.setFillColor(...corSelo.fundo)
+    doc.roundedRect(xQualidade, y + 1.5, larguraSelo, 6.5, 1.5, 1.5, 'F')
+    doc.setTextColor(...corSelo.texto)
+    doc.text(textoSelo, xQualidade + 4, y + 6)
+  }
 
   y += 16
 
@@ -331,26 +362,26 @@ export async function gerarPDFVistoria(
     const x = margem + col * larguraColuna
     const yItem = y + linha * 8
     const temItem = dados.itens?.includes(item)
+    const corItem = temItem ? verdeItemMarcado : cinzaItemNaoMarcado
 
-    doc.setFillColor(temItem ? vermelho[0] : 220, temItem ? vermelho[1] : 38, temItem ? vermelho[2] : 38)
+    doc.setFillColor(...corItem)
     doc.circle(x + 3, yItem + 2, 2, 'F')
 
     doc.setFont('helvetica', temItem ? 'bold' : 'normal')
     doc.setFontSize(9)
-    doc.setTextColor(temItem ? vermelho[0] : 150, temItem ? vermelho[1] : 150, temItem ? vermelho[2] : 150)
+    doc.setTextColor(...corItem)
     doc.text(item, x + 7, yItem + 4)
   })
 
   y += Math.ceil(todosItens.length / colunas) * 8 + 8
 
-  // ===== Rodapé da primeira página, com gradiente e logo pequena =====
+  // ===== Rodapé da primeira página, com gradiente (sem logo, só texto) =====
   desenharFaixaGradiente(doc, 0, 287, largura, 10)
-  desenharLogoComSeguranca(doc, logoCarregada, margem, 288.5, 14.5, 5.9)
 
-  doc.setTextColor(...cinzaEscuro)
+  doc.setTextColor(255, 255, 255)
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')
-  doc.text('Sistema de Vistoria Digital', margem + 18, 293)
+  doc.text('Sistema de Vistoria Digital', margem, 293)
   doc.text(`Gerado em ${dados.data} às ${dados.hora}`, largura - margem, 293, { align: 'right' })
 
   // ===== PÁGINA(S) DE FOTOS =====
@@ -361,7 +392,7 @@ export async function gerarPDFVistoria(
     const larguraFoto = (largura - margem * 2 - espacamento) / colunasFoto
     const alturaFoto = larguraFoto * 0.75 // proporção 4:3, boa para fotos de celular
     const alturaCartao = alturaFoto + 12 // espaço da foto + legenda com o nome da posição
-    const topoUtil = 40 // onde o conteúdo pode começar, abaixo do cabeçalho da página de fotos
+    const topoUtil = 55 // abaixo da faixa (25mm) + área branca com a logo (mais respiro)
     const rodapeLimite = 280 // onde o conteúdo deve parar, antes do rodapé
 
     let paginaFotoAtual = -1 // força criar a primeira página de fotos no loop abaixo
@@ -374,20 +405,22 @@ export async function gerarPDFVistoria(
 
     const desenharCabecalhoPaginaFotos = () => {
       desenharFaixaGradiente(doc, 0, 0, largura, 25)
-      desenharLogoComSeguranca(doc, logoCarregada, margem, 5, 24, 9.7)
-      doc.setTextColor(...cinzaEscuro)
+      doc.setTextColor(255, 255, 255)
       doc.setFontSize(9)
       doc.setFont('helvetica', 'normal')
-      doc.text(`Placa: ${dados.placa}`, margem + 30, 12)
+      doc.text(`Placa: ${dados.placa}`, margem, 15)
+
+      // Logo na área branca, abaixo do gradiente — fundo branco por trás da logo
+      // fica mais limpo do que sobre o vermelho, igual já fizemos na capa.
+      desenharLogoComSeguranca(doc, logoCarregada, margem, 32, 32, 12.9)
     }
 
     const desenharRodapePaginaFotos = () => {
       desenharFaixaGradiente(doc, 0, 287, largura, 10)
-      desenharLogoComSeguranca(doc, logoCarregada, margem, 288.5, 14.5, 5.9)
-      doc.setTextColor(...cinzaEscuro)
+      doc.setTextColor(255, 255, 255)
       doc.setFontSize(8)
       doc.setFont('helvetica', 'normal')
-      doc.text('Sistema de Vistoria Digital', margem + 18, 293)
+      doc.text('Sistema de Vistoria Digital', margem, 293)
       doc.text(`Gerado em ${dados.data} às ${dados.hora}`, largura - margem, 293, { align: 'right' })
     }
 
