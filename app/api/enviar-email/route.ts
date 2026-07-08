@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 
-const resend = new Resend('re_CpNvYWPb_5xgzKCvsebxJWowMV1fmJRXL')
+const resend = new Resend('re_3hJ4LK29_KpSLVEt6apn8vCa6etJjrxvq')
 
 export async function POST(request: NextRequest) {
   try {
