@@ -82,12 +82,20 @@ export async function POST(request: NextRequest) {
       ] : [],
     })
 
+    // PONTO-CHAVE DA CORREÇÃO: antes, mesmo quando "error" vinha preenchido aqui,
+    // o page.tsx nunca checava a resposta desta API — então o card verde de
+    // "sucesso" aparecia na tela mesmo quando o Resend recusava o envio. Este log
+    // fica registrado nos Logs da Vercel (Deployments → clique no deploy →
+    // Functions → Logs), útil para diagnosticar sem depender só do print da tela.
     if (error) {
-      return NextResponse.json({ error }, { status: 400 })
+      console.error('❌ Resend recusou o envio do email:', error)
+      return NextResponse.json({ success: false, error }, { status: 400 })
     }
 
+    console.log('✅ Email enviado com sucesso via Resend. ID:', data?.id)
     return NextResponse.json({ success: true, data })
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    console.error('❌ Erro inesperado ao tentar enviar email:', err)
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 })
   }
-} 
+}

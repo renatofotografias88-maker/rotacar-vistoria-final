@@ -39,6 +39,7 @@ export default function Vistoria() {
   const [enviando, setEnviando] = useState(false)
   const [sucesso, setSucesso] = useState(false)
   const [statusEnvio, setStatusEnvio] = useState('')
+  const [erroEnvio, setErroEnvio] = useState('')
   const [uploadandoFoto, setUploadandoFoto] = useState<string | null>(null)
 
   const [fotoSlots, setFotoSlots] = useState<FotoSlot[]>([
@@ -181,6 +182,7 @@ export default function Vistoria() {
       return
     }
     setEnviando(true)
+    setErroEnvio('')
     setStatusEnvio('💾 Salvando vistoria...')
 
     const dataHoje = new Date().toISOString().split('T')[0]
@@ -226,32 +228,61 @@ export default function Vistoria() {
     })
 
     setStatusEnvio('📧 Enviando email...')
-    await fetch('/api/enviar-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        pdfBase64,
-        dadosVistoria: {
-          placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
-          modelo, cor, ano, combustivel, km, fipe, qualidade,
-          responsavel, validacao, observacoes, itens,
-          data: dataHoje, hora: horaAgora,
-        }
+
+    // CORREÇÃO PRINCIPAL: antes, o resultado desse fetch era ignorado — a tela
+    // mostrava "sucesso" mesmo se o email tivesse falhado. Agora a resposta é
+    // checada de verdade: só mostramos sucesso se o email realmente foi enviado
+    // pelo Resend. Se falhar, mostramos um aviso vermelho claro, sem apagar os
+    // dados preenchidos — assim você não perde o trabalho e pode tentar reenviar.
+    let emailEnviado = false
+    let mensagemErroEmail = ''
+
+    try {
+      const respostaEmail = await fetch('/api/enviar-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pdfBase64,
+          dadosVistoria: {
+            placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
+            modelo, cor, ano, combustivel, km, fipe, qualidade,
+            responsavel, validacao, observacoes, itens,
+            data: dataHoje, hora: horaAgora,
+          }
+        })
       })
-    })
+
+      const resultadoEmail = await respostaEmail.json()
+
+      if (respostaEmail.ok && resultadoEmail.success) {
+        emailEnviado = true
+      } else {
+        mensagemErroEmail = resultadoEmail.error?.message || resultadoEmail.error || 'Erro desconhecido ao enviar email'
+      }
+    } catch (erroFetch: any) {
+      mensagemErroEmail = 'Não foi possível conectar ao servidor de email: ' + erroFetch.message
+    }
 
     setEnviando(false)
     setStatusEnvio('')
-    setSucesso(true)
 
-    setTimeout(() => {
-      setSucesso(false)
-      setPlaca(''); setModelo(''); setAno(''); setCor('')
-      setCombustivel(''); setFipe(''); setQualidade(''); setKm('')
-      setResponsavel(''); setValidacao(''); setObservacoes(''); setItens([])
-      setEncontrado(false)
-      setFotoSlots(prev => prev.map(s => ({ ...s, fotos: [] })))
-    }, 4000)
+    if (emailEnviado) {
+      setSucesso(true)
+      setTimeout(() => {
+        setSucesso(false)
+        setPlaca(''); setModelo(''); setAno(''); setCor('')
+        setCombustivel(''); setFipe(''); setQualidade(''); setKm('')
+        setResponsavel(''); setValidacao(''); setObservacoes(''); setItens([])
+        setEncontrado(false)
+        setFotoSlots(prev => prev.map(s => ({ ...s, fotos: [] })))
+      }, 4000)
+    } else {
+      // A vistoria já foi salva no banco com sucesso (isso não falhou) — só o
+      // envio do email deu problema. Por isso não limpamos o formulário: os
+      // dados continuam ali, e nada foi perdido. O aviso deixa claro que só o
+      // email precisa ser resolvido.
+      setErroEnvio(`A vistoria foi salva, mas o email não foi enviado: ${mensagemErroEmail}`)
+    }
   }
 
   return (
@@ -261,6 +292,12 @@ export default function Vistoria() {
         {sucesso && (
           <div style={{ background: '#DCFCE7', border: '1px solid #16A34A', borderRadius: 10, padding: '1rem', marginBottom: '1rem', textAlign: 'center', color: '#15803D', fontWeight: 600 }}>
             ✅ Vistoria salva e email enviado com sucesso!
+          </div>
+        )}
+
+        {erroEnvio && (
+          <div style={{ background: '#FEE2E2', border: '1px solid #DC2626', borderRadius: 10, padding: '1rem', marginBottom: '1rem', color: '#B91C1C', fontWeight: 500, fontSize: 14 }}>
+            ⚠️ {erroEnvio}
           </div>
         )}
 
