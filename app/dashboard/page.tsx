@@ -16,12 +16,25 @@ interface Usuario {
 export default function Dashboard() {
   const [vistorias, setVistorias] = useState<any[]>([])
   const [filtradas, setFiltradas] = useState<any[]>([])
-  const [busca, setBusca] = useState('')
-  const [filtroMes, setFiltroMes] = useState('')
-  const [filtroAno, setFiltroAno] = useState(String(new Date().getFullYear()))
+  const [filtroAno, setFiltroAno] = useState(String(new Date().getFullYear())) // usado pelos gráficos, atualiza em tempo real
   const [carregando, setCarregando] = useState(true)
   const [verTodosModelos, setVerTodosModelos] = useState(false)
   const router = useRouter()
+
+  // ===== Estado dos filtros da TABELA/EXPORTAÇÃO (independentes do ano dos gráficos) =====
+  // Cada filtro tem uma versão "rascunho" (o que a pessoa está digitando/selecionando
+  // agora) e o valor "aplicado" só é atualizado quando ela clica em "Buscar" — assim
+  // a lista não pisca a cada letra digitada, e dá pra combinar vários filtros de
+  // uma vez antes de rodar a busca.
+  const [buscaRascunho, setBuscaRascunho] = useState('')
+  const [anoRascunho, setAnoRascunho] = useState('')
+  const [mesRascunho, setMesRascunho] = useState('')
+  const [qualidadeRascunho, setQualidadeRascunho] = useState('')
+
+  const [buscaAplicada, setBuscaAplicada] = useState('')
+  const [anoAplicado, setAnoAplicado] = useState('')
+  const [mesAplicado, setMesAplicado] = useState('')
+  const [qualidadeAplicada, setQualidadeAplicada] = useState('')
 
   // ===== Estado da seção "Gerenciar usuários" =====
   const [painelUsuariosAberto, setPainelUsuariosAberto] = useState(false)
@@ -56,17 +69,30 @@ export default function Dashboard() {
     setCarregando(false)
   }
 
+  // Roda o filtro usando os valores APLICADOS (não os rascunhos), então só reage
+  // quando o usuário clica em "Buscar" (função buscarNaTabela) ou quando a lista
+  // de vistorias muda (ex: acabou de carregar do banco).
   useEffect(() => {
     let resultado = [...vistorias]
-    if (busca) resultado = resultado.filter(v =>
-      v.placa?.toLowerCase().includes(busca.toLowerCase()) ||
-      v.modelo?.toLowerCase().includes(busca.toLowerCase()) ||
-      v.responsavel?.toLowerCase().includes(busca.toLowerCase())
+    if (buscaAplicada) resultado = resultado.filter(v =>
+      v.placa?.toLowerCase().includes(buscaAplicada.toLowerCase()) ||
+      v.modelo?.toLowerCase().includes(buscaAplicada.toLowerCase()) ||
+      v.responsavel?.toLowerCase().includes(buscaAplicada.toLowerCase())
     )
-    if (filtroMes) resultado = resultado.filter(v => v.data_vistoria?.slice(5, 7) === filtroMes)
-    if (filtroAno) resultado = resultado.filter(v => v.data_vistoria?.slice(0, 4) === filtroAno)
+    if (mesAplicado) resultado = resultado.filter(v => v.data_vistoria?.slice(5, 7) === mesAplicado)
+    if (anoAplicado) resultado = resultado.filter(v => v.data_vistoria?.slice(0, 4) === anoAplicado)
+    if (qualidadeAplicada) resultado = resultado.filter(v => v.qualidade === qualidadeAplicada)
     setFiltradas(resultado)
-  }, [busca, filtroMes, filtroAno, vistorias])
+  }, [buscaAplicada, mesAplicado, anoAplicado, qualidadeAplicada, vistorias])
+
+  // Chamado pelo botão "Buscar": copia os valores dos campos (rascunho) para os
+  // valores aplicados, disparando o useEffect acima e atualizando a tabela.
+  function buscarNaTabela() {
+    setBuscaAplicada(buscaRascunho)
+    setAnoAplicado(anoRascunho)
+    setMesAplicado(mesRascunho)
+    setQualidadeAplicada(qualidadeRascunho)
+  }
 
   // Dados gráfico por mês (usa filtroAno)
   const vistoriasPorMes = MESES.map((_, i) => {
@@ -102,7 +128,7 @@ export default function Dashboard() {
     const ws = XLSX.utils.json_to_sheet(dados)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Vistorias')
-    XLSX.writeFile(wb, `vistorias_${filtroAno || 'todos'}_${filtroMes || 'todos'}.xlsx`)
+    XLSX.writeFile(wb, `vistorias_${anoAplicado || 'todos'}_${mesAplicado || 'todos'}.xlsx`)
   }
 
   function sair() { sessionStorage.clear(); router.push('/') }
@@ -429,12 +455,18 @@ export default function Dashboard() {
         {/* Filtros + Exportar */}
         <div style={{ background: 'white', borderRadius: 12, padding: '1rem', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', marginBottom: '1rem' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <input style={{ flex: 2, minWidth: 140, fontSize: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', color: '#0f172a', outline: 'none' }} placeholder="Buscar por placa, modelo ou responsável..." value={busca} onChange={e => setBusca(e.target.value)} />
-            <select style={{ flex: 1, minWidth: 100, fontSize: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', color: '#0f172a', outline: 'none' }} value={filtroAno} onChange={e => setFiltroAno(e.target.value)}>
+            <input
+              style={{ flex: 2, minWidth: 160, fontSize: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', color: '#0f172a', outline: 'none' }}
+              placeholder="Buscar por placa, modelo ou responsável..."
+              value={buscaRascunho}
+              onChange={e => setBuscaRascunho(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && buscarNaTabela()}
+            />
+            <select style={{ flex: 1, minWidth: 100, fontSize: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', color: '#0f172a', outline: 'none' }} value={anoRascunho} onChange={e => setAnoRascunho(e.target.value)}>
               <option value="">Todos os anos</option>
               <option>2024</option><option>2025</option><option>2026</option>
             </select>
-            <select style={{ flex: 1, minWidth: 100, fontSize: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', color: '#0f172a', outline: 'none' }} value={filtroMes} onChange={e => setFiltroMes(e.target.value)}>
+            <select style={{ flex: 1, minWidth: 100, fontSize: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', color: '#0f172a', outline: 'none' }} value={mesRascunho} onChange={e => setMesRascunho(e.target.value)}>
               <option value="">Todos os meses</option>
               <option value="01">Janeiro</option><option value="02">Fevereiro</option>
               <option value="03">Março</option><option value="04">Abril</option>
@@ -443,6 +475,13 @@ export default function Dashboard() {
               <option value="09">Setembro</option><option value="10">Outubro</option>
               <option value="11">Novembro</option><option value="12">Dezembro</option>
             </select>
+            <select style={{ flex: 1, minWidth: 110, fontSize: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', color: '#0f172a', outline: 'none' }} value={qualidadeRascunho} onChange={e => setQualidadeRascunho(e.target.value)}>
+              <option value="">Todas as qualidades</option>
+              <option value="Bom">Bom</option>
+              <option value="Regular">Regular</option>
+              <option value="Repasse">Repasse</option>
+            </select>
+            <button onClick={buscarNaTabela} style={{ padding: '8px 16px', background: '#0f172a', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>🔍 Buscar</button>
             <button onClick={exportarExcel} style={{ padding: '8px 16px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>📥 Exportar Excel</button>
           </div>
           <p style={{ margin: '8px 0 0', fontSize: 12, color: '#64748b' }}>{filtradas.length} vistoria{filtradas.length !== 1 ? 's' : ''} encontrada{filtradas.length !== 1 ? 's' : ''}</p>
