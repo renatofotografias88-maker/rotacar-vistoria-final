@@ -36,6 +36,13 @@ export default function Dashboard() {
   const [mesAplicado, setMesAplicado] = useState('')
   const [qualidadeAplicada, setQualidadeAplicada] = useState('')
 
+  // ===== Estado da seção "Atualizar base de veículos" =====
+  const [painelFrotaAberto, setPainelFrotaAberto] = useState(false)
+  const [importandoFrota, setImportandoFrota] = useState(false)
+  const [resultadoFrota, setResultadoFrota] = useState<string | null>(null)
+  const [erroFrota, setErroFrota] = useState<string | null>(null)
+  const [previewFrota, setPreviewFrota] = useState<any[]>([])
+
   // ===== Estado da seção "Gerenciar usuários" =====
   const [painelUsuariosAberto, setPainelUsuariosAberto] = useState(false)
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
@@ -136,6 +143,57 @@ export default function Dashboard() {
   const totalHoje = vistorias.filter(v => v.data_vistoria === new Date().toISOString().split('T')[0]).length
   const totalMes = vistorias.filter(v => v.data_vistoria?.slice(0, 7) === new Date().toISOString().slice(0, 7)).length
   const totalAno = vistorias.filter(v => v.data_vistoria?.slice(0, 4) === String(new Date().getFullYear())).length
+
+  // ===== Funções da seção "Atualizar base de veículos" =====
+
+  async function processarExcelFrota(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setImportandoFrota(true)
+    setResultadoFrota(null)
+    setErroFrota(null)
+    setPreviewFrota([])
+
+    try {
+      const buffer = await file.arrayBuffer()
+      const wb = XLSX.read(buffer)
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const dados = XLSX.utils.sheet_to_json(ws) as any[]
+
+      const veiculos = dados.map((row: any) => ({
+        placa: String(row['Placa'] || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
+        modelo: row['Modelo'] || null,
+        combustivel: row['Combustível'] || null,
+        cor: row['Cor'] || null,
+        chassi: row['Número do Chassi'] || null,
+        renavan: String(row['Número do Renavan'] || ''),
+        ano_veiculo: String(row['Ano do Veículo'] || ''),
+        ano_modelo: String(row['Ano do Modelo'] || ''),
+      })).filter(v => v.placa)
+
+      setPreviewFrota(veiculos.slice(0, 5))
+
+      // Apaga a frota inteira e insere novamente — é assim que essa importação
+      // sempre funcionou (igual na página /admin original): a base de veículos é
+      // sempre substituída por completo a cada novo Excel enviado, nunca mesclada
+      // com a anterior. Isso é o comportamento certo para a base fictícia de teste
+      // ser trocada pela base real da Rotacar mais tarde.
+      await supabase.from('frota').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+
+      const { error } = await supabase.from('frota').insert(veiculos)
+
+      if (error) {
+        setErroFrota('Erro ao importar: ' + error.message)
+      } else {
+        setResultadoFrota(`✅ ${veiculos.length} veículos importados com sucesso!`)
+      }
+    } catch (err: any) {
+      setErroFrota('Erro ao ler o arquivo: ' + err.message)
+    }
+
+    setImportandoFrota(false)
+  }
 
   // ===== Funções da seção "Gerenciar usuários" =====
 
@@ -266,13 +324,75 @@ export default function Dashboard() {
               <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>Vistorias de entrada</p>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => setPainelFrotaAberto(!painelFrotaAberto)} style={{ padding: '6px 14px', background: painelFrotaAberto ? '#1D9E75' : '#E1F5EE', color: painelFrotaAberto ? 'white' : '#1D9E75', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+              🚗 {painelFrotaAberto ? 'Fechar frota' : 'Atualizar frota'}
+            </button>
             <button onClick={abrirPainelUsuarios} style={{ padding: '6px 14px', background: painelUsuariosAberto ? '#1D9E75' : '#E1F5EE', color: painelUsuariosAberto ? 'white' : '#1D9E75', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
               👤 {painelUsuariosAberto ? 'Fechar usuários' : 'Gerenciar usuários'}
             </button>
             <button onClick={sair} style={{ padding: '6px 14px', background: '#FEE2E2', color: '#B91C1C', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Sair</button>
           </div>
         </div>
+
+        {/* ===== Painel "Atualizar base de veículos" (expansível) ===== */}
+        {painelFrotaAberto && (
+          <div style={{ background: 'white', borderRadius: 12, padding: '1.25rem', boxShadow: '0 1px 6px rgba(0,0,0,0.06)', marginBottom: '1.5rem' }}>
+            <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 600, color: '#0f172a' }}>🚗 Atualizar base de veículos</p>
+            <p style={{ margin: '0 0 1rem', fontSize: 12, color: '#94a3b8' }}>
+              Selecione o arquivo Excel da frota. O sistema vai substituir toda a base de veículos automaticamente.
+            </p>
+
+            {resultadoFrota && (
+              <div style={{ background: '#DCFCE7', border: '1px solid #16A34A', borderRadius: 10, padding: '10px 12px', marginBottom: 12, color: '#15803D', fontWeight: 500, fontSize: 13 }}>
+                {resultadoFrota}
+              </div>
+            )}
+
+            {erroFrota && (
+              <div style={{ background: '#FEE2E2', border: '1px solid #DC2626', borderRadius: 10, padding: '10px 12px', marginBottom: 12, color: '#B91C1C', fontWeight: 500, fontSize: 13 }}>
+                {erroFrota}
+              </div>
+            )}
+
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px 20px', background: importandoFrota ? '#94a3b8' : '#1D9E75', color: 'white', borderRadius: 10, fontSize: 14, fontWeight: 500, cursor: importandoFrota ? 'not-allowed' : 'pointer', width: '100%' }}>
+              {importandoFrota ? '⏳ Importando...' : '📥 Selecionar arquivo Excel'}
+              <input type="file" accept=".xlsx,.xls" onChange={processarExcelFrota} style={{ display: 'none' }} disabled={importandoFrota} />
+            </label>
+
+            {previewFrota.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 8 }}>Primeiros registros importados:</p>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f1f5f9' }}>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>Placa</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>Modelo</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>Cor</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: '#64748b' }}>Ano</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewFrota.map((v, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '8px 10px', color: '#0f172a' }}>{v.placa}</td>
+                          <td style={{ padding: '8px 10px', color: '#0f172a' }}>{v.modelo}</td>
+                          <td style={{ padding: '8px 10px', color: '#0f172a' }}>{v.cor}</td>
+                          <td style={{ padding: '8px 10px', color: '#0f172a' }}>{v.ano_veiculo}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <p style={{ margin: '1rem 0 0', fontSize: 11, color: '#cbd5e1' }}>
+              Atenção: esta ação substitui TODA a base de veículos atual pela do arquivo selecionado.
+            </p>
+          </div>
+        )}
 
         {/* ===== Painel "Gerenciar usuários" (expansível) ===== */}
         {painelUsuariosAberto && (
