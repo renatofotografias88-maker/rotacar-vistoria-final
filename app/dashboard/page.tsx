@@ -194,15 +194,31 @@ export default function Dashboard() {
     }
     setSalvandoSenha(true)
 
-    const { error } = await supabase
+    // CORREÇÃO: filtrar por "login" em vez de "id", e adicionar .select() no
+    // final. Sem o .select(), o Supabase não avisa quando um update não
+    // encontra nenhuma linha correspondente — ele retorna "sucesso" mesmo
+    // tendo alterado ZERO linhas. Com o .select(), conseguimos ver a linha
+    // devolvida e confirmar de verdade que a alteração aconteceu; se vier
+    // vazio, sabemos que algo está errado com o filtro, não é sucesso real.
+    const { data, error } = await supabase
       .from('usuarios')
       .update({ senha: senhaTemporaria.trim() })
-      .eq('id', usuarioId)
+      .eq('login', loginUsuario)
+      .select()
 
     setSalvandoSenha(false)
 
     if (error) {
       setMensagemUsuarios({ tipo: 'erro', texto: 'Erro ao alterar senha: ' + error.message })
+      return
+    }
+
+    if (!data || data.length === 0) {
+      // Isso não deveria acontecer nunca (o login vem direto da lista já
+      // carregada), mas se acontecer, é melhor avisar claramente do que
+      // fingir sucesso — foi exatamente esse "fingir sucesso" que causou
+      // a confusão anterior.
+      setMensagemUsuarios({ tipo: 'erro', texto: `Não foi possível encontrar o usuário "${loginUsuario}" para atualizar. Nenhuma linha foi alterada.` })
       return
     }
 
