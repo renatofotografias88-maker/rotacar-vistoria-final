@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 import { gerarPDFVistoria } from '../lib/gerarPDF'
 
@@ -22,6 +23,7 @@ function normalizarNome(nome: string): string {
 }
 
 export default function Vistoria() {
+  const router = useRouter()
   const [placa, setPlaca] = useState('')
   const [modelo, setModelo] = useState('')
   const [ano, setAno] = useState('')
@@ -55,6 +57,11 @@ export default function Vistoria() {
   ])
 
   const checklistItens = ['Documento','Chave roda','Estepe','Macaco','Bagagito','Som','Antena','Triângulo','Chave reserva','Manual','Rastreador','Seguro']
+
+  function sair() {
+    sessionStorage.clear()
+    router.push('/')
+  }
 
   async function buscarFipe(modeloNome: string, anoVeiculo: string) {
     try {
@@ -301,8 +308,9 @@ export default function Vistoria() {
           </div>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
           <img src="https://ikqkipacxemgxtqkvgdb.supabase.co/storage/v1/object/public/fotos-vistorias/logo/logo%20rotacar.png" alt="Rotacar" style={{ height: 48, objectFit: 'contain' }} />
+          <button onClick={sair} style={{ padding: '6px 14px', background: '#FEE2E2', color: '#B91C1C', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Sair</button>
         </div>
 
         <p style={sectionStyle}>Dados do veículo</p>
