@@ -21,22 +21,56 @@ export default function Admin() {
 
     try {
       const buffer = await file.arrayBuffer()
-      const wb = XLSX.read(buffer)
-      const ws = wb.Sheets[wb.SheetNames[0]]
-      const dados = XLSX.utils.sheet_to_json(ws) as any[]
 
-      const veiculos = dados.map((row: any) => ({
-        placa: String(row['Placa'] || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
-        modelo: row['Modelo'] || null,
-        combustivel: row['Combustível'] || null,
-        cor: row['Cor'] || null,
-        chassi: row['Número do Chassi'] || null,
-        renavan: String(row['Número do Renavan'] || ''),
-        ano_veiculo: String(row['Ano do Veículo'] || ''),
-        ano_modelo: String(row['Ano do Modelo'] || ''),
-      })).filter(v => v.placa)
+      // O relatório de frota exportado pelo sistema da Rotacar vem como uma
+      // página HTML com extensão ".xls" (não é um binário de Excel de verdade).
+      // Detectamos isso pela assinatura dos primeiros bytes: .xlsx começa com
+      // "PK" (zip) e .xls binário antigo começa com a assinatura OLE2
+      // (D0 CF 11 E0). Quando não é nenhum dos dois, tratamos como HTML e
+      // decodificamos com o charset que o próprio arquivo declara
+      // (ISO-8859-1) — sem isso, os acentos de "Combustível", "Número" e
+      // "Veículo" saem corrompidos e essas colunas nunca batiam com o nome
+      // que o código procura.
+      const bytes = new Uint8Array(buffer)
+      const ehZip = bytes[0] === 0x50 && bytes[1] === 0x4B
+      const ehOle2 = bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0
+      const wb = (ehZip || ehOle2)
+        ? XLSX.read(buffer)
+        : XLSX.read(new TextDecoder('iso-8859-1').decode(buffer), { type: 'string' })
+
+      // Esse relatório em HTML tem duas tabelas: um bloco de título ("BASE
+      // VISTORIAS...") e a tabela real com os veículos — cada uma vira uma
+      // aba separada. Em vez de sempre pegar a primeira aba (que é o título
+      // vazio), procuramos a aba que realmente tem a coluna "Placa".
+      let dados: any[] = []
+      for (const nomeAba of wb.SheetNames) {
+        const linhas = XLSX.utils.sheet_to_json(wb.Sheets[nomeAba]) as any[]
+        if (linhas.length > 0 && 'Placa' in linhas[0]) { dados = linhas; break }
+      }
+
+      const veiculos = dados
+        // A última linha desse relatório é um rodapé de totais (ex: "Total de
+        // Veículos: 1493"), sem os outros campos preenchidos — descartamos
+        // qualquer linha sem "Modelo", que só acontece nesse rodapé.
+        .filter((row: any) => row['Modelo'])
+        .map((row: any) => ({
+          placa: String(row['Placa'] || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
+          modelo: row['Modelo'] || null,
+          combustivel: row['Combustível'] || null,
+          cor: row['Cor'] || null,
+          chassi: row['Número do Chassi'] || null,
+          renavan: String(row['Número do Renavan'] || ''),
+          ano_veiculo: String(row['Ano do Veículo'] || ''),
+          ano_modelo: String(row['Ano do Modelo'] || ''),
+        })).filter(v => v.placa)
 
       setPreview(veiculos.slice(0, 5))
+
+      if (veiculos.length === 0) {
+        setErro('Não encontrei nenhum veículo válido nesse arquivo. Confira se é o arquivo certo antes de tentar de novo — a base atual NÃO foi apagada.')
+        setCarregando(false)
+        return
+      }
 
       // Apaga tudo e insere novamente
       await supabase.from('frota').delete().neq('id', '00000000-0000-0000-0000-000000000000')
