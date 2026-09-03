@@ -5,6 +5,12 @@ interface FotoVistoria {
   url: string
 }
 
+interface PneuInfo {
+  posicao: string
+  marcaReferencia: string
+  status: string
+}
+
 interface DadosVistoria {
   placa: string
   modelo: string
@@ -18,6 +24,7 @@ interface DadosVistoria {
   validacao: string
   observacoes: string
   itens: string[]
+  pneus?: PneuInfo[]
   fotos?: FotoVistoria[]
   data: string
   hora: string
@@ -374,6 +381,56 @@ export async function gerarPDFVistoria(
   })
 
   y += Math.ceil(todosItens.length / colunas) * 8 + 8
+
+  // Seção pneus — se não sobrar espaço suficiente antes do rodapé, começa uma
+  // página nova em vez de sobrepor o conteúdo com a faixa do rodapé.
+  if (dados.pneus && dados.pneus.length > 0) {
+    if (y > 250) {
+      doc.addPage()
+      y = 20
+    }
+
+    doc.setFillColor(...cinzaClaro)
+    doc.rect(margem, y, largura - margem * 2, 8, 'F')
+    doc.setTextColor(...cinzaEscuro)
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'bold')
+    doc.text('PNEUS', margem + 3, y + 5.5)
+
+    y += 12
+
+    const statusCores: Record<string, { fundo: [number, number, number]; texto: [number, number, number] }> = {
+      'Novo': { fundo: [22, 163, 74], texto: [255, 255, 255] },       // verde / branco
+      'Meia vida': { fundo: [250, 204, 21], texto: [113, 63, 18] },   // amarelo / marrom
+      'Careca': { fundo: [220, 38, 38], texto: [255, 255, 255] },     // vermelho / branco
+    }
+
+    dados.pneus.forEach(pneu => {
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9)
+      doc.setTextColor(...cinzaEscuro)
+      doc.text(pneu.posicao, margem, y + 4)
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(9)
+      doc.setTextColor(...cinzaMedio)
+      doc.text(pneu.marcaReferencia || '-', margem + 48, y + 4)
+
+      const corSelo = statusCores[pneu.status] || { fundo: cinzaClaro, texto: cinzaMedio }
+      const textoSelo = pneu.status || '-'
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(8)
+      const larguraSelo = doc.getTextWidth(textoSelo) + 6
+      doc.setFillColor(...corSelo.fundo)
+      doc.roundedRect(largura - margem - larguraSelo, y, larguraSelo, 6, 1.5, 1.5, 'F')
+      doc.setTextColor(...corSelo.texto)
+      doc.text(textoSelo, largura - margem - larguraSelo + 3, y + 4.2)
+
+      y += 8
+    })
+
+    y += 6
+  }
 
   // ===== Rodapé da primeira página, com gradiente (sem logo, só texto) =====
   desenharFaixaGradiente(doc, 0, 287, largura, 10)
