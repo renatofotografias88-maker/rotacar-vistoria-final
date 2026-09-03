@@ -11,6 +11,18 @@ interface FotoSlot {
   fotos: { url: string; path: string }[]
 }
 
+interface PneuInfo {
+  posicao: string
+  marcaReferencia: string
+  status: string
+}
+
+const POSICOES_PNEUS = ['Dianteiro direito', 'Dianteiro esquerdo', 'Traseiro direito', 'Traseiro esquerdo', 'Estepe']
+
+function pneusVazios(): PneuInfo[] {
+  return POSICOES_PNEUS.map(posicao => ({ posicao, marcaReferencia: '', status: '' }))
+}
+
 function normalizarNome(nome: string): string {
   return nome
     .normalize('NFD')
@@ -36,6 +48,7 @@ export default function Vistoria() {
   const [validacao, setValidacao] = useState('')
   const [observacoes, setObservacoes] = useState('')
   const [itens, setItens] = useState<string[]>([])
+  const [pneus, setPneus] = useState<PneuInfo[]>(pneusVazios())
   const [buscando, setBuscando] = useState(false)
   const [encontrado, setEncontrado] = useState(false)
   const [enviando, setEnviando] = useState(false)
@@ -183,11 +196,28 @@ export default function Vistoria() {
     setItens(prev => prev.includes(item) ? prev.filter(i => i !== item) : [...prev, item])
   }
 
+  function atualizarMarcaPneu(posicao: string, valor: string) {
+    setPneus(prev => prev.map(p => p.posicao === posicao ? { ...p, marcaReferencia: valor } : p))
+  }
+
+  function atualizarStatusPneu(posicao: string, status: string) {
+    setPneus(prev => prev.map(p => p.posicao === posicao ? { ...p, status } : p))
+  }
+
   async function enviarVistoria() {
     if (!placa || !responsavel || !km) {
       alert('Preencha pelo menos a placa, KM atual e responsável!')
       return
     }
+
+    // Pneus são obrigatórios: cada um dos 5 (4 pneus + estepe) precisa ter a
+    // marca/referência e o status preenchidos antes de enviar a vistoria.
+    const pneuIncompleto = pneus.find(p => !p.marcaReferencia.trim() || !p.status)
+    if (pneuIncompleto) {
+      alert(`Preencha a marca/referência e o status do pneu "${pneuIncompleto.posicao}" antes de enviar!`)
+      return
+    }
+
     setEnviando(true)
     setErroEnvio('')
     setStatusEnvio('💾 Salvando vistoria...')
@@ -200,6 +230,7 @@ export default function Vistoria() {
       placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
       modelo, ano_veiculo: ano, cor, combustivel, fipe, qualidade,
       km_atual: parseInt(km), responsavel, observacoes, itens,
+      pneus,
       fotos: todasFotos,
       data_vistoria: dataHoje,
       hora_vistoria: horaAgora,
@@ -218,6 +249,7 @@ export default function Vistoria() {
         placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
         modelo, cor, ano, combustivel, km, fipe, qualidade,
         responsavel, validacao, observacoes, itens,
+        pneus,
         fotos: todasFotos,
         data: dataHoje, hora: horaAgora,
       },
@@ -254,6 +286,7 @@ export default function Vistoria() {
             placa: placa.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(),
             modelo, cor, ano, combustivel, km, fipe, qualidade,
             responsavel, validacao, observacoes, itens,
+            pneus,
             data: dataHoje, hora: horaAgora,
           }
         })
@@ -281,6 +314,7 @@ export default function Vistoria() {
         setCombustivel(''); setFipe(''); setQualidade(''); setKm('')
         setResponsavel(''); setValidacao(''); setObservacoes(''); setItens([])
         setEncontrado(false)
+        setPneus(pneusVazios())
         setFotoSlots(prev => prev.map(s => ({ ...s, fotos: [] })))
       }, 4000)
     } else {
@@ -378,6 +412,43 @@ export default function Vistoria() {
 
         <p style={sectionStyle}>Observações gerais</p>
         <textarea style={{ ...inputStyle, resize: 'none', lineHeight: 1.6 }} rows={4} placeholder="Descreva qualquer observação sobre lataria, pintura, mecânica..." value={observacoes} onChange={e => setObservacoes(e.target.value)} />
+
+        <p style={sectionStyle}>Pneus *</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+          {pneus.map(pneu => (
+            <div key={pneu.posicao} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 12 }}>
+              <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>🛞 {pneu.posicao}</p>
+              <input
+                style={{ ...inputStyle, marginBottom: 8, background: 'white' }}
+                placeholder="Marca e referência (ex: Pirelli Cinturato P1 175/70 R14)"
+                value={pneu.marcaReferencia}
+                onChange={e => atualizarMarcaPneu(pneu.posicao, e.target.value)}
+              />
+              <div style={{ display: 'flex', gap: 6 }}>
+                {['Novo', 'Meia vida', 'Careca'].map(status => (
+                  <button
+                    key={status}
+                    onClick={() => atualizarStatusPneu(pneu.posicao, status)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 4px',
+                      borderRadius: 8,
+                      border: '1px solid',
+                      fontSize: 12,
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      background: pneu.status === status ? (status === 'Novo' ? '#DCFCE7' : status === 'Meia vida' ? '#FEF9C3' : '#FEE2E2') : 'white',
+                      borderColor: pneu.status === status ? (status === 'Novo' ? '#16A34A' : status === 'Meia vida' ? '#CA8A04' : '#DC2626') : '#e2e8f0',
+                      color: pneu.status === status ? (status === 'Novo' ? '#15803D' : status === 'Meia vida' ? '#A16207' : '#B91C1C') : '#64748b',
+                    }}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
 
         <p style={sectionStyle}>Itens do veículo — marque o que possui</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
