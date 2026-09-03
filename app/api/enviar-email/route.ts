@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 
-const resend = new Resend('re_3hJ4LK29_KpSLVEt6apn8vCa6etJjrxvq')
+// A chave da API do Resend NÃO fica mais escrita aqui no código — antes ela
+// estava hardcoded, o que a deixava exposta publicamente no GitHub (o
+// repositório é público). Agora ela vem de uma variável de ambiente
+// configurada no Vercel (RESEND_API_KEY), que nunca aparece no código-fonte.
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(request: NextRequest) {
   try {
+    if (!process.env.RESEND_API_KEY) {
+      console.error('❌ RESEND_API_KEY não está configurada nas variáveis de ambiente do Vercel.')
+      return NextResponse.json(
+        { success: false, error: 'Servidor de email não configurado (RESEND_API_KEY ausente).' },
+        { status: 500 }
+      )
+    }
+
     const body = await request.json()
     const { pdfBase64, dadosVistoria } = body
 
@@ -62,6 +74,19 @@ export async function POST(request: NextRequest) {
             <div style="margin-top: 16px; padding: 12px; background: white; border-radius: 6px; border: 1px solid #e2e8f0;">
               <p style="margin: 0 0 6px; font-size: 13px; color: #64748b; font-weight: bold;">OBSERVAÇÕES</p>
               <p style="margin: 0; font-size: 14px; color: #0f172a;">${dadosVistoria.observacoes}</p>
+            </div>` : ''}
+
+            ${dadosVistoria.pneus?.length ? `
+            <div style="margin-top: 16px; padding: 12px; background: white; border-radius: 6px; border: 1px solid #e2e8f0;">
+              <p style="margin: 0 0 8px; font-size: 13px; color: #64748b; font-weight: bold;">PNEUS</p>
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: #0f172a;">
+                ${dadosVistoria.pneus.map((p: any) => `
+                <tr>
+                  <td style="padding: 4px 8px 4px 0; font-weight: bold; white-space: nowrap;">${p.posicao}</td>
+                  <td style="padding: 4px 8px;">${p.marcaReferencia || '-'}</td>
+                  <td style="padding: 4px 0; white-space: nowrap;">${p.status || '-'}</td>
+                </tr>`).join('')}
+              </table>
             </div>` : ''}
 
             <div style="margin-top: 16px; padding: 12px; background: white; border-radius: 6px; border: 1px solid #e2e8f0;">
