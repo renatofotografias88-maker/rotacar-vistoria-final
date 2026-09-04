@@ -128,7 +128,7 @@ export default function Dashboard() {
     const dados = filtradas.map(v => ({
       'Placa': v.placa, 'Modelo': v.modelo, 'Cor': v.cor,
       'KM': v.km_atual, 'Ano': v.ano_veiculo, 'Combustível': v.combustivel,
-      'FIPE': v.fipe, 'Qualidade': v.qualidade, 'Responsável': v.responsavel,
+      'FIPE': v.fipe, 'Destino do veículo': v.qualidade, 'Responsável': v.responsavel,
       'Validação': v.validacao, 'Data': v.data_vistoria, 'Hora': v.hora_vistoria,
       'Observações': v.observacoes,
     }))
@@ -630,10 +630,9 @@ export default function Dashboard() {
               <option value="11">Novembro</option><option value="12">Dezembro</option>
             </select>
             <select style={{ flex: 1, minWidth: 110, fontSize: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', color: '#0f172a', outline: 'none' }} value={qualidadeRascunho} onChange={e => setQualidadeRascunho(e.target.value)}>
-              <option value="">Todas as qualidades</option>
-              <option value="Bom">Bom</option>
-              <option value="Regular">Regular</option>
-              <option value="Repasse">Repasse</option>
+              <option value="">Todos os destinos</option>
+              <option value="Direto pra venda">Direto pra venda</option>
+              <option value="Manutenção">Manutenção</option>
             </select>
             <button onClick={buscarNaTabela} style={{ padding: '8px 16px', background: '#0f172a', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>🔍 Buscar</button>
             <button onClick={exportarExcel} style={{ padding: '8px 16px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>📥 Exportar Excel</button>
@@ -644,7 +643,7 @@ export default function Dashboard() {
         {/* Tabela histórico */}
         <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 6px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr 80px 90px 80px', gap: 8, padding: '10px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-            {['Placa', 'Modelo', 'KM', 'Data', 'Qualidade'].map(h => (
+            {['Placa', 'Modelo', 'KM', 'Data', 'Destino'].map(h => (
               <span key={h} style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
             ))}
           </div>
@@ -659,7 +658,7 @@ export default function Dashboard() {
                 <span style={{ fontSize: 13, color: '#0f172a' }}>{v.modelo}</span>
                 <span style={{ fontSize: 12, color: '#64748b' }}>{v.km_atual?.toLocaleString()} km</span>
                 <span style={{ fontSize: 12, color: '#64748b' }}>{v.data_vistoria}</span>
-                <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: v.qualidade === 'Bom' ? '#DCFCE7' : v.qualidade === 'Regular' ? '#FEF9C3' : '#FEE2E2', color: v.qualidade === 'Bom' ? '#15803D' : v.qualidade === 'Regular' ? '#A16207' : '#B91C1C' }}>
+                <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: v.qualidade === 'Direto pra venda' ? '#DCFCE7' : '#FFEDD5', color: v.qualidade === 'Direto pra venda' ? '#15803D' : '#C2410C' }}>
                   {v.qualidade || '-'}
                 </span>
               </div>
