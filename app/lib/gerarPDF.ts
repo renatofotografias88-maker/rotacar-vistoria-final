@@ -276,21 +276,21 @@ export async function gerarPDFVistoria(
     doc.text(campo[1] || '-', x, y + 5)
   })
 
-  // "Qualidade" fica na posição direita da última linha (mesmo lugar que ocupava
-  // na lista antes), mas desenhada à parte porque ela usa um "selo" colorido em
-  // vez de texto simples — cor muda conforme o valor: Bom (verde), Regular
-  // (amarelo), Repasse (vermelho). Isso deixa visível de longe, sem precisar ler.
+  // "Destino do veículo" fica na posição direita da última linha (mesmo lugar
+  // que ocupava na lista antes), mas desenhada à parte porque ela usa um "selo"
+  // colorido em vez de texto simples — cor muda conforme o valor: Direto pra
+  // venda (verde), Manutenção (laranja). Isso deixa visível de longe, sem
+  // precisar ler.
   {
     const xQualidade = colDir
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8)
     doc.setTextColor(...cinzaMedio)
-    doc.text('QUALIDADE', xQualidade, y)
+    doc.text('DESTINO DO VEÍCULO', xQualidade, y)
 
     const qualidadeCores: Record<string, { fundo: [number, number, number]; texto: [number, number, number] }> = {
-      'Bom': { fundo: [22, 163, 74], texto: [255, 255, 255] },       // verde / branco
-      'Regular': { fundo: [250, 204, 21], texto: [113, 63, 18] },    // amarelo / marrom
-      'Repasse': { fundo: [220, 38, 38], texto: [255, 255, 255] },   // vermelho / branco
+      'Direto pra venda': { fundo: [22, 163, 74], texto: [255, 255, 255] },  // verde / branco
+      'Manutenção': { fundo: [234, 88, 12], texto: [255, 255, 255] },        // laranja / branco
     }
     const corSelo = qualidadeCores[dados.qualidade] || { fundo: cinzaClaro, texto: cinzaMedio }
     const textoSelo = dados.qualidade || '-'
