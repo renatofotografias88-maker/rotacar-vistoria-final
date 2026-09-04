@@ -62,7 +62,6 @@ export default function Vistoria() {
     { posicao: 'Traseira', multiplas: false, fotos: [] },
     { posicao: 'Lateral direita', multiplas: false, fotos: [] },
     { posicao: 'Lateral esquerda', multiplas: false, fotos: [] },
-    { posicao: 'Painel / interior', multiplas: false, fotos: [] },
     { posicao: 'Hodometro KM', multiplas: false, fotos: [] },
     { posicao: 'Pneus', multiplas: true, fotos: [] },
     { posicao: 'Motor', multiplas: true, fotos: [] },
@@ -369,10 +368,10 @@ export default function Vistoria() {
               <span style={{ fontSize: 11, background: '#BFDBFE', color: '#1D4ED8', padding: '2px 8px', borderRadius: 4 }}>Automático</span>
             </div>
             <div>
-              <label style={labelStyle}>Qualidade *</label>
+              <label style={labelStyle}>Destino do veículo *</label>
               <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                {['Bom', 'Regular', 'Repasse'].map(q => (
-                  <button key={q} onClick={() => setQualidade(q)} style={{ flex: 1, padding: '8px 4px', borderRadius: 8, border: '1px solid', fontSize: 12, fontWeight: 500, cursor: 'pointer', background: qualidade === q ? (q === 'Bom' ? '#DCFCE7' : q === 'Regular' ? '#FEF9C3' : '#FEE2E2') : '#f8fafc', borderColor: qualidade === q ? (q === 'Bom' ? '#16A34A' : q === 'Regular' ? '#CA8A04' : '#DC2626') : '#e2e8f0', color: qualidade === q ? (q === 'Bom' ? '#15803D' : q === 'Regular' ? '#A16207' : '#B91C1C') : '#64748b' }}>{q}</button>
+                {['Direto pra venda', 'Manutenção'].map(q => (
+                  <button key={q} onClick={() => setQualidade(q)} style={{ flex: 1, padding: '8px 4px', borderRadius: 8, border: '1px solid', fontSize: 12, fontWeight: 500, cursor: 'pointer', background: qualidade === q ? (q === 'Direto pra venda' ? '#DCFCE7' : '#FFEDD5') : '#f8fafc', borderColor: qualidade === q ? (q === 'Direto pra venda' ? '#16A34A' : '#EA580C') : '#e2e8f0', color: qualidade === q ? (q === 'Direto pra venda' ? '#15803D' : '#C2410C') : '#64748b' }}>{q}</button>
                 ))}
               </div>
             </div>
