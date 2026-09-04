@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
                 <td style="padding: 8px; font-size: 14px; color: #0f172a;">${dadosVistoria.fipe}</td>
               </tr>
               <tr style="background: white;">
-                <td style="padding: 8px; font-size: 13px; color: #64748b; font-weight: bold;">QUALIDADE</td>
+                <td style="padding: 8px; font-size: 13px; color: #64748b; font-weight: bold;">DESTINO</td>
                 <td style="padding: 8px; font-size: 14px; color: #0f172a;">${dadosVistoria.qualidade}</td>
                 <td style="padding: 8px; font-size: 13px; color: #64748b; font-weight: bold;">COMBUSTÍVEL</td>
                 <td style="padding: 8px; font-size: 14px; color: #0f172a;">${dadosVistoria.combustivel}</td>
